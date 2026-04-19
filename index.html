@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nerikiri Recipe Calculator</title>
+    <meta
+      name="description"
+      content="Hydration-aware nerikiri batch planning with optional liquid coloring adjustment."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero card">
+        <div class="hero-copy">
+          <p class="eyebrow">Hydration-aware Wagashi Planning</p>
+          <h1>Nerikiri Recipe Calculator</h1>
+          <p class="hero-text">
+            Plan sculpted nerikiri batches with exact or batch-based scaling,
+            process loss, optional liquid-coloring moisture correction, and a
+            separate recipe studio for building your own dough library.
+          </p>
+        </div>
+        <div class="hero-metrics" id="hero-metrics" aria-live="polite"></div>
+      </header>
+
+      <nav class="view-switcher card" aria-label="App sections">
+        <button class="view-tab active" id="tab-calculator" type="button" data-view="calculator">
+          Calculator
+        </button>
+        <button class="view-tab" id="tab-studio" type="button" data-view="studio">
+          Recipe Studio
+        </button>
+      </nav>
+
+      <main>
+        <section class="view-panel" id="view-calculator" data-view-panel="calculator">
+          <div class="workspace">
+            <section class="card form-card">
+              <div class="section-heading">
+                <div>
+                  <p class="section-kicker">Calculation Setup</p>
+                  <h2>Dial in the batch</h2>
+                </div>
+                <button class="ghost-button" id="load-example" type="button">
+                  Load Example
+                </button>
+              </div>
+
+              <form id="calculator-form" novalidate>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>Recipe</span>
+                    <select id="recipeId" name="recipeId"></select>
+                  </label>
+
+                  <fieldset class="field">
+                    <legend>Calculation mode</legend>
+                    <div class="segmented">
+                      <input
+                        type="radio"
+                        id="mode-exact"
+                        name="mode"
+                        value="exact"
+                        checked
+                      />
+                      <label for="mode-exact">Exact pieces</label>
+
+                      <input type="radio" id="mode-batch" name="mode" value="batch" />
+                      <label for="mode-batch">Batch grams</label>
+                    </div>
+                  </fieldset>
+                </div>
+
+                <div class="field-grid exact-fields exact-piece-fields" id="exact-fields">
+                  <label class="field">
+                    <span>Piece count</span>
+                    <input
+                      id="pieceCount"
+                      name="pieceCount"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value="5"
+                    />
+                  </label>
+
+                  <label class="field">
+                    <span>Recipe piece weight (g)</span>
+                    <input
+                      id="pieceWeightGrams"
+                      name="pieceWeightGrams"
+                      type="number"
+                      min="1"
+                      step="0.1"
+                      value="41"
+                      readonly
+                    />
+                    <small>Determined by the selected recipe.</small>
+                  </label>
+                </div>
+
+                <div class="field-grid batch-fields hidden" id="batch-fields">
+                  <label class="field">
+                    <span>Desired finished dough (g)</span>
+                    <input
+                      id="batchWeightGrams"
+                      name="batchWeightGrams"
+                      type="number"
+                      min="1"
+                      step="0.1"
+                      value="280"
+                    />
+                  </label>
+                </div>
+
+                <div class="field-grid">
+                  <label class="field">
+                    <span>Process loss (%)</span>
+                    <input
+                      id="processLossPct"
+                      name="processLossPct"
+                      type="number"
+                      min="0"
+                      max="95"
+                      step="0.1"
+                      value="0"
+                    />
+                    <small>Scales the batch up before hydration logic.</small>
+                  </label>
+
+                  <label class="field">
+                    <span>Round weigh-outs</span>
+                    <select id="roundToIncrement" name="roundToIncrement">
+                      <option value="">No rounding</option>
+                      <option value="0.05">0.05 g</option>
+                      <option value="0.1">0.1 g</option>
+                      <option value="0.25">0.25 g</option>
+                      <option value="0.5">0.5 g</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="hydration-panel">
+                  <div class="section-heading compact">
+                    <div>
+                      <p class="section-kicker">Coloring Hydration</p>
+                      <h2>Choose how coloring behaves</h2>
+                    </div>
+                  </div>
+
+                  <fieldset class="field">
+                    <legend>Coloring mode</legend>
+                    <div class="segmented">
+                      <input
+                        type="radio"
+                        id="coloring-powder"
+                        name="coloringMode"
+                        value="powder"
+                        checked
+                      />
+                      <label for="coloring-powder">Powder</label>
+
+                      <input
+                        type="radio"
+                        id="coloring-liquid"
+                        name="coloringMode"
+                        value="liquid"
+                      />
+                      <label for="coloring-liquid">Liquid</label>
+                    </div>
+                  </fieldset>
+
+                  <div class="field-grid liquid-fields hidden" id="liquid-fields">
+                    <label class="field">
+                      <span>Liquid coloring total (g)</span>
+                      <input
+                        id="liquidColoringAmount"
+                        name="liquidColoringAmount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value="1.2"
+                      />
+                      <small>
+                        Counted gram-for-gram as moisture in this MVP rule.
+                      </small>
+                    </label>
+                  </div>
+
+                  <p class="hydration-note">
+                    Powder leaves the base water untouched. Liquid reduces added
+                    water with a zero floor so the dough never goes negative.
+                  </p>
+                </div>
+              </form>
+            </section>
+
+            <section class="card results-card">
+              <div class="section-heading">
+                <div>
+                  <p class="section-kicker">Transparent Output</p>
+                  <h2>Recipe report</h2>
+                </div>
+              </div>
+
+              <div id="results" aria-live="polite"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view-panel hidden" id="view-studio" data-view-panel="studio">
+          <div class="studio-layout">
+            <section class="card studio-sidebar">
+              <div class="section-heading">
+                <div>
+                  <p class="section-kicker">Recipe Library</p>
+                  <h2>Saved recipes</h2>
+                </div>
+                <button class="ghost-button" id="new-recipe" type="button">
+                  New Recipe
+                </button>
+              </div>
+              <div id="recipe-library" class="recipe-library" aria-live="polite"></div>
+            </section>
+
+            <section class="card studio-editor">
+              <div class="section-heading">
+                <div>
+                  <p class="section-kicker">Recipe Studio</p>
+                  <h2>Create or edit a recipe</h2>
+                </div>
+              </div>
+
+              <form id="recipe-form" novalidate>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>Recipe name</span>
+                    <input id="recipe-name" name="name" type="text" placeholder="Spring Nerikiri Base" />
+                  </label>
+
+                  <label class="field">
+                    <span>Base yield (g)</span>
+                    <input id="recipe-yield" name="yieldGrams" type="number" min="1" step="0.1" />
+                  </label>
+                </div>
+
+                <label class="field">
+                  <span>Description</span>
+                  <textarea id="recipe-description" name="description" rows="3" placeholder="Soft enough for petals, strong enough for clean cuts."></textarea>
+                </label>
+
+                <div class="studio-ingredient-header">
+                  <div>
+                    <p class="section-kicker">Ingredients</p>
+                    <h3>Base formula</h3>
+                  </div>
+                  <button class="ghost-button" id="add-ingredient" type="button">
+                    Add Ingredient
+                  </button>
+                </div>
+
+                <div id="ingredient-editor" class="ingredient-editor"></div>
+
+                <div class="studio-actions">
+                  <button class="primary-button" id="save-recipe" type="submit">
+                    Save Recipe
+                  </button>
+                  <button class="ghost-button" id="duplicate-recipe" type="button">
+                    Duplicate
+                  </button>
+                </div>
+                <p id="recipe-form-message" class="form-message" aria-live="polite"></p>
+              </form>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
