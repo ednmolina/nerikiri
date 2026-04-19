@@ -2,18 +2,28 @@
 
 ## Executive Overview
 
-This app is a static browser-based nerikiri planner with two distinct jobs:
+This app is a static browser-based nerikiri production planner.
 
-1. Scale a selected recipe by piece count or by target batch weight.
-2. Show the production math behind that recipe in a way that is useful at the bench.
+At a high level, it does three things:
 
-At the moment, the built-in recipes are finished-piece recipes such as `Iris Nerikiri` and `Sakura Nerikiri`, not generic dough formulas. That means:
+1. Scales a selected recipe by `piece count` or by `target batch weight`.
+2. Builds a practical production report from that scaling math.
+3. Stores editable recipes locally in the browser through `Recipe Studio`.
 
-- exact mode is driven by `piece count`
-- the selected recipe determines `piece weight`
-- the app can also back-calculate the amount of base white nerikiri dough needed, then show how to split and tint that dough for each color portion
+The current built-in recipes are finished-piece recipes, not abstract shape presets. So in exact mode:
 
-The app also includes a `Recipe Studio` view for creating and editing browser-saved recipes, plus an optional hydration-adjustment engine for recipes that explicitly define a hydration target ingredient.
+- the user enters `piece count`
+- the selected recipe supplies the `piece weight`
+- the app scales the finished piece recipe directly
+
+For built-in colored-piece recipes such as `Iris Nerikiri` and `Sakura Nerikiri`, the app also links those finished recipes back to a shared white base dough recipe. That lets it show:
+
+- the total amount of finished colored dough required
+- the scaled base white nerikiri dough needed for that batch
+- the color split for each portion
+- any filling that should be weighed separately
+
+The app also contains a general hydration-adjustment engine, but that only affects recipes that explicitly define a hydration target ingredient.
 
 ## High-Level Mental Model
 
@@ -75,6 +85,31 @@ Think of the app as three layers:
       +--> [Show filling separately]
 ```
 
+### Hydration-aware dough flow
+
+```text
+[Recipe has hydrationTargetIngredientId]
+              |
+              v
+[Scale recipe normally]
+              |
+              v
+[Apply process loss first]
+              |
+              v
+[Find scaled base water]
+              |
+              +--> powder mode -> [leave water unchanged]
+              |
+              +--> liquid mode -> [subtract liquid coloring amount]
+                                   |
+                                   v
+                         [Clamp at zero]
+              |
+              v
+[Show scaled base water, coloring contribution, final water to add]
+```
+
 ### Recipe storage flow
 
 ```text
@@ -98,6 +133,7 @@ Think of the app as three layers:
 - Supports a separate `Recipe Studio` tab.
 - Persists recipes in browser `localStorage`.
 - Includes a base-dough decomposition report for built-in colored-piece recipes.
+- Links finished-piece recipes to a shared white base dough through `baseDoughRecipeId`.
 
 ## Current Built-In Logic
 
@@ -150,6 +186,27 @@ That means:
 - the current built-in finished-piece recipes do not use hydration adjustment directly
 - even though the shared base dough recipe contains water, the current base-dough decomposition report is informational scaling, not a hydration-adjusted dough planner
 
+### 4. Process loss and round weigh-outs
+
+`Process loss (%)` increases the batch before ingredient scaling.
+
+```text
+requiredPreLossGrams = targetOutputGrams / (1 - processLossPct / 100)
+```
+
+Practical meaning:
+
+- if you want `410 g` finished output and expect `10%` loss
+- the app scales the recipe to `455.56 g` before ingredient math
+
+`Round weigh-outs` does not change the underlying exact scale factor. It changes the displayed weigh-out values after scaling so they are easier to measure in practice.
+
+Practical meaning:
+
+- exact math might produce `8.13 g`
+- rounding to `0.1 g` displays `8.1 g`
+- rounding to `0.25 g` displays `8.25 g`
+
 ## Current UI Behavior
 
 ### Calculator
@@ -177,6 +234,11 @@ Depending on the recipe, the report can show:
 - color split
 - filling reminder chips
 - full ingredient breakdown
+
+The hero metrics change slightly depending on the recipe:
+
+- for linked finished-piece recipes, the hero highlights total base dough required
+- for hydration-aware dough recipes, the hero highlights final water to add
 
 ### Recipe Studio
 
@@ -241,11 +303,11 @@ If that target exists, liquid coloring can reduce the amount of water to add.
 ## File Map
 
 - `index.html`
-  Main app shell and both top-level views.
+  Main app shell, calculator view, and Recipe Studio view.
 - `src/app.js`
-  UI state, rendering, report composition, and browser interactions.
+  UI state, rendering, report composition, recipe selection, and browser interactions.
 - `src/calculator.js`
-  Scaling engine, hydration adjustment, and base-dough/color-split calculations.
+  Scaling engine, hydration adjustment, process-loss handling, rounding, and base-dough/color-split calculations.
 - `src/data.js`
   Built-in finished-piece recipes and the shared base dough recipe.
 - `src/recipe-store.js`
@@ -283,5 +345,6 @@ Finished-piece recipe selected
 -> app scales the finished recipe
 -> app optionally derives the white base dough needed
 -> app shows how to split and color that dough
+-> app applies hydration logic only for recipes that declare a hydration target
 -> Recipe Studio stores additional recipes locally
 ```
