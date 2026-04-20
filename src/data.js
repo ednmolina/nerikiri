@@ -10,6 +10,30 @@ export const BASE_DOUGH_RECIPES = [
       { id: "water", name: "Water (水)", baseGrams: 20, role: "hydration-target" },
       { id: "granulated-sugar", name: "Granulated sugar (グラニュー糖)", baseGrams: 20 }
     ]
+  },
+  {
+    id: "soft-petal-nerikiri-base",
+    name: "Soft Petal Nerikiri Base",
+    description: "A slightly softer batch for thin petals and gentle blending.",
+    yieldGrams: 352,
+    ingredients: [
+      { id: "white-bean-paste", name: "White bean paste (白こしあん)", baseGrams: 300 },
+      { id: "shiratama-flour", name: "Shiratama flour (白玉粉)", baseGrams: 8 },
+      { id: "water", name: "Water (水)", baseGrams: 26, role: "hydration-target" },
+      { id: "granulated-sugar", name: "Granulated sugar (グラニュー糖)", baseGrams: 18 }
+    ]
+  },
+  {
+    id: "firm-detail-nerikiri-base",
+    name: "Firm Detail Nerikiri Base",
+    description: "A firmer dough for crisper cuts, edges, and hand-formed detail.",
+    yieldGrams: 344,
+    ingredients: [
+      { id: "white-bean-paste", name: "White bean paste (白こしあん)", baseGrams: 300 },
+      { id: "shiratama-flour", name: "Shiratama flour (白玉粉)", baseGrams: 14 },
+      { id: "water", name: "Water (水)", baseGrams: 12, role: "hydration-target" },
+      { id: "granulated-sugar", name: "Granulated sugar (グラニュー糖)", baseGrams: 18 }
+    ]
   }
 ];
 

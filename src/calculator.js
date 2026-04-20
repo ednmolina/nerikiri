@@ -212,13 +212,30 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
     };
   });
 
+  function scaleBaseForPortion(portionGrams) {
+    const portionScale =
+      baseDoughRecipe.yieldGrams > 0 ? portionGrams / baseDoughRecipe.yieldGrams : 0;
+    return baseDoughRecipe.ingredients.map((ingredient) => {
+      const scaledGrams = ingredient.baseGrams * portionScale;
+      return {
+        ...ingredient,
+        scaledGrams,
+        scaledRoundedGrams:
+          roundingIncrement !== undefined
+            ? roundToIncrement(scaledGrams, roundingIncrement)
+            : scaledGrams
+      };
+    });
+  }
+
   return {
     colorPortions: coloredIngredients.map((ingredient) => ({
       id: ingredient.id,
       name: ingredient.name,
       colorLabel: ingredient.colorLabel ?? null,
       totalGrams: ingredient.toAddGrams,
-      totalRoundedGrams: ingredient.toAddRoundedGrams
+      totalRoundedGrams: ingredient.toAddRoundedGrams,
+      baseDoughIngredients: scaleBaseForPortion(ingredient.toAddGrams)
     })),
     fillingPortions: fillingIngredients.map((ingredient) => ({
       id: ingredient.id,
