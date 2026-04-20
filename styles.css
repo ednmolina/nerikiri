@@ -615,6 +615,50 @@ tbody td:nth-child(4) {
   gap: 12px;
 }
 
+.library-type-toggle {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(76, 48, 26, 0.12);
+  border-radius: 999px;
+  background: rgba(245, 236, 224, 0.88);
+}
+
+.library-tab {
+  flex: 1;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 14px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.library-tab.active {
+  background: linear-gradient(135deg, var(--matcha) 0%, #4c7a64 100%);
+  color: #fef8f0;
+  box-shadow: 0 12px 22px rgba(53, 95, 76, 0.18);
+}
+
+.library-tab:hover {
+  transform: translateY(-1px);
+}
+
+.library-tab:focus-visible {
+  outline: 2px solid rgba(53, 95, 76, 0.24);
+  outline-offset: 2px;
+}
+
 .library-item {
   width: 100%;
   text-align: left;

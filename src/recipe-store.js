@@ -1,35 +1,61 @@
-import { DEFAULT_RECIPES } from "./data.js";
+import { BASE_DOUGH_RECIPES, DEFAULT_RECIPES } from "./data.js";
 
 const STORAGE_KEY = "nerikiri-recipes-v3";
+const BASE_DOUGH_STORAGE_KEY = "nerikiri-base-doughs-v1";
 
-function cloneRecipes(recipes) {
+function cloneRecipes(recipes = []) {
   return recipes.map((recipe) => ({
     ...recipe,
-    ingredients: recipe.ingredients.map((ingredient) => ({ ...ingredient }))
+    ingredients: (recipe.ingredients ?? []).map((ingredient) => ({ ...ingredient }))
   }));
 }
 
-function mergeWithDefaultRecipes(savedRecipes) {
+function mergeIngredientCollections(defaultIngredients = [], savedIngredients = []) {
+  if (!Array.isArray(savedIngredients) || savedIngredients.length === 0) {
+    return defaultIngredients.map((ingredient) => ({ ...ingredient }));
+  }
+
+  const defaultIngredientById = new Map(
+    defaultIngredients.map((ingredient) => [ingredient.id, ingredient])
+  );
+
+  return savedIngredients.map((savedIngredient, index) => {
+    const defaultIngredient =
+      defaultIngredientById.get(savedIngredient?.id) ?? defaultIngredients[index] ?? {};
+
+    return {
+      ...defaultIngredient,
+      ...savedIngredient
+    };
+  });
+}
+
+function mergeWithDefaultRecipes(defaultRecipes, savedRecipes) {
+  const defaultRecipeIds = new Set(defaultRecipes.map((recipe) => recipe.id));
   const savedById = new Map(savedRecipes.map((recipe) => [recipe.id, recipe]));
-  const mergedDefaults = DEFAULT_RECIPES.map((defaultRecipe) => {
+  const mergedDefaults = defaultRecipes.map((defaultRecipe) => {
     const savedRecipe = savedById.get(defaultRecipe.id);
 
     if (!savedRecipe) {
-      return { ...defaultRecipe };
+      return {
+        ...defaultRecipe,
+        ingredients: cloneRecipes([defaultRecipe])[0].ingredients
+      };
     }
 
-    // Always use default recipe's ingredients and structure so data model changes
-    // (type, colorLabel, baseDoughRecipeId) propagate. Only preserve display overrides.
     return {
       ...defaultRecipe,
-      name: savedRecipe.name ?? defaultRecipe.name,
-      description: savedRecipe.description ?? defaultRecipe.description,
-      id: defaultRecipe.id
+      ...savedRecipe,
+      id: defaultRecipe.id,
+      ingredients: mergeIngredientCollections(
+        defaultRecipe.ingredients,
+        savedRecipe.ingredients
+      )
     };
   });
 
   const customRecipes = savedRecipes.filter(
-    (recipe) => !DEFAULT_RECIPES.some((defaultRecipe) => defaultRecipe.id === recipe.id)
+    (recipe) => !defaultRecipeIds.has(recipe.id)
   );
 
   return [...mergedDefaults, ...customRecipes];
@@ -56,6 +82,51 @@ function toFiniteNumber(value, fallback = 0) {
 
 function hasLocalStorage() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function loadCollection(storageKey, defaultRecipes) {
+  if (!hasLocalStorage()) {
+    return cloneRecipes(defaultRecipes);
+  }
+
+  const raw = window.localStorage.getItem(storageKey);
+
+  if (!raw) {
+    return cloneRecipes(defaultRecipes);
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return cloneRecipes(defaultRecipes);
+    }
+
+    return cloneRecipes(mergeWithDefaultRecipes(defaultRecipes, parsed));
+  } catch {
+    return cloneRecipes(defaultRecipes);
+  }
+}
+
+function saveCollection(storageKey, recipes) {
+  if (!hasLocalStorage()) {
+    return;
+  }
+
+  window.localStorage.setItem(storageKey, JSON.stringify(cloneRecipes(recipes)));
+}
+
+function upsertCollection(recipes, recipe) {
+  const nextRecipes = cloneRecipes(recipes);
+  const index = nextRecipes.findIndex((existingRecipe) => existingRecipe.id === recipe.id);
+
+  if (index >= 0) {
+    nextRecipes[index] = recipe;
+    return nextRecipes;
+  }
+
+  nextRecipes.push(recipe);
+  return nextRecipes;
 }
 
 export function buildIngredientId(name, index) {
@@ -146,46 +217,25 @@ export function validateRecipeInput(recipeInput, existingRecipes = []) {
 }
 
 export function loadRecipes() {
-  if (!hasLocalStorage()) {
-    return cloneRecipes(DEFAULT_RECIPES);
-  }
-
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-
-  if (!raw) {
-    return cloneRecipes(DEFAULT_RECIPES);
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return cloneRecipes(DEFAULT_RECIPES);
-    }
-
-    return cloneRecipes(mergeWithDefaultRecipes(parsed));
-  } catch {
-    return cloneRecipes(DEFAULT_RECIPES);
-  }
+  return loadCollection(STORAGE_KEY, DEFAULT_RECIPES);
 }
 
 export function saveRecipes(recipes) {
-  if (!hasLocalStorage()) {
-    return;
-  }
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cloneRecipes(recipes)));
+  saveCollection(STORAGE_KEY, recipes);
 }
 
 export function upsertRecipe(recipes, recipe) {
-  const nextRecipes = cloneRecipes(recipes);
-  const index = nextRecipes.findIndex((existingRecipe) => existingRecipe.id === recipe.id);
+  return upsertCollection(recipes, recipe);
+}
 
-  if (index >= 0) {
-    nextRecipes[index] = recipe;
-    return nextRecipes;
-  }
+export function loadBaseDoughRecipes() {
+  return loadCollection(BASE_DOUGH_STORAGE_KEY, BASE_DOUGH_RECIPES);
+}
 
-  nextRecipes.push(recipe);
-  return nextRecipes;
+export function saveBaseDoughRecipes(recipes) {
+  saveCollection(BASE_DOUGH_STORAGE_KEY, recipes);
+}
+
+export function upsertBaseDoughRecipe(recipes, recipe) {
+  return upsertCollection(recipes, recipe);
 }

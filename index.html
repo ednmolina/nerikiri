@@ -55,6 +55,11 @@
                     <select id="recipeId" name="recipeId"></select>
                   </label>
 
+                  <label class="field hidden" id="base-dough-field">
+                    <span>Base dough recipe</span>
+                    <select id="baseDoughRecipeId" name="baseDoughRecipeId"></select>
+                  </label>
+
                   <fieldset class="field">
                     <legend>Calculation mode</legend>
                     <div class="segmented">
@@ -216,10 +221,28 @@
               <div class="section-heading">
                 <div>
                   <p class="section-kicker">Recipe Library</p>
-                  <h2>Saved recipes</h2>
+                  <h2 id="recipe-library-heading">Saved design recipes</h2>
                 </div>
                 <button class="ghost-button" id="new-recipe" type="button">
-                  New Recipe
+                  New Design Recipe
+                </button>
+              </div>
+              <div class="library-type-toggle" aria-label="Recipe library type">
+                <button
+                  class="library-tab active"
+                  id="library-tab-design"
+                  type="button"
+                  data-library-type="design"
+                >
+                  Design Recipes
+                </button>
+                <button
+                  class="library-tab"
+                  id="library-tab-base-dough"
+                  type="button"
+                  data-library-type="base-dough"
+                >
+                  Base Dough
                 </button>
               </div>
               <div id="recipe-library" class="recipe-library" aria-live="polite"></div>
@@ -229,7 +252,7 @@
               <div class="section-heading">
                 <div>
                   <p class="section-kicker">Recipe Studio</p>
-                  <h2>Create or edit a recipe</h2>
+                  <h2 id="studio-editor-heading">Create or edit a design recipe</h2>
                 </div>
               </div>
 
@@ -249,6 +272,14 @@
                 <label class="field">
                   <span>Description</span>
                   <textarea id="recipe-description" name="description" rows="3" placeholder="Soft enough for petals, strong enough for clean cuts."></textarea>
+                </label>
+
+                <label class="field" id="studio-base-dough-field">
+                  <span>Default base dough</span>
+                  <select id="studio-baseDoughRecipeId" name="baseDoughRecipeId"></select>
+                  <small>
+                    Sets the calculator’s default dough for this design recipe.
+                  </small>
                 </label>
 
                 <div class="studio-ingredient-header">
