@@ -33,14 +33,13 @@ const EMPTY_RECIPE_TEMPLATE = {
   description: "",
   yieldGrams: 41,
   baseDoughRecipeId: "base-nerikiri-paste",
-  hydrationTargetIngredientId: "water",
+  hydrationTargetIngredientId: "",
   ingredients: [
     { name: "White nerikiri paste", baseGrams: 22, role: undefined },
     { name: "Purple nerikiri paste", baseGrams: 3, role: undefined },
     { name: "Yellow nerikiri paste", baseGrams: 1, role: undefined },
     { name: "Green nerikiri paste", baseGrams: 2, role: undefined },
-    { name: "Inner filling paste", baseGrams: 13, role: undefined },
-    { name: "Water", baseGrams: 1, role: "hydration-target" }
+    { name: "Inner filling paste", baseGrams: 13, role: undefined }
   ]
 };
 
@@ -273,15 +272,17 @@ function readCalculatorState() {
   };
 }
 
-function syncRecipeDrivenFields() {
+function syncRecipeDrivenFields({ syncBaseDough = false } = {}) {
   const recipe = getRecipeById(recipeSelect.value);
 
   if (!recipe) {
     return;
   }
 
-  if (recipe.baseDoughRecipeId && !getBaseDoughRecipe(baseDoughSelect.value)) {
-    baseDoughSelect.value = recipe.baseDoughRecipeId;
+  if (recipe.baseDoughRecipeId) {
+    if (syncBaseDough || !getBaseDoughRecipe(baseDoughSelect.value)) {
+      baseDoughSelect.value = recipe.baseDoughRecipeId;
+    }
   }
 
   form.elements.pieceWeightGrams.value = recipe.yieldGrams;
@@ -372,9 +373,15 @@ function renderSummary(plan, inputState) {
   `;
 }
 
-function renderHydration(plan) {
+function renderHydration(plan, colorSplit) {
   const hydration = plan.hydration;
   if (!hydration.hasTargetIngredient) {
+    const liquidApplied =
+      plan.settings.coloringMode === "liquid" &&
+      colorSplit?.totalLiquidColoringAmount > 0;
+    const chipMarkup = liquidApplied
+      ? `<span class="chip">Liquid coloring is distributed across the base dough water in the color split below.</span>`
+      : `<span class="chip">Coloring settings do not change this recipe’s math.</span>`;
     return `
       <article class="result-card">
         <h3>Hydration adjustment</h3>
@@ -382,9 +389,7 @@ function renderHydration(plan) {
           This recipe is modeled as a finished colored flower recipe, so it
           does not include a hydration-adjustable water ingredient.
         </p>
-        <div class="chip-row">
-          <span class="chip">Coloring settings do not change this recipe’s math.</span>
-        </div>
+        <div class="chip-row">${chipMarkup}</div>
       </article>
     `;
   }
@@ -514,38 +519,53 @@ function renderColorSplit(colorSplit) {
 
   const baseIngredients = colorSplit.baseDoughRecipe.ingredients;
   const portions = colorSplit.colorPortions;
-  const totalDoughGrams = portions.reduce((sum, p) => sum + p.totalRoundedGrams, 0);
+
+  // Build the cell matrix first so column/row/grand totals all derive from the same numbers.
+  const cellMatrix = baseIngredients.map((baseIngredient) =>
+    portions.map((portion) => {
+      const match = portion.baseDoughIngredients.find((i) => i.id === baseIngredient.id);
+      return match?.scaledRoundedGrams ?? 0;
+    })
+  );
+  const columnTotals = portions.map((_, colIdx) =>
+    cellMatrix.reduce((sum, row) => sum + row[colIdx], 0)
+  );
+  const grandTotal = columnTotals.reduce((sum, v) => sum + v, 0);
+
+  const liquidColoringApplied = colorSplit.totalLiquidColoringAmount > 0;
 
   const headerCells = portions
-    .map((portion) => {
+    .map((portion, colIdx) => {
       const colorNote = portion.colorLabel
         ? `<span class="portion-color-label">+ ${portion.colorLabel}</span>`
         : `<span class="portion-color-label">uncolored</span>`;
       return `<th class="portion-col">
         <span class="portion-col-name">${escapeHtml(portion.name)}</span>
-        <span class="portion-col-grams">${formatGrams(portion.totalRoundedGrams)}</span>
+        <span class="portion-col-grams">${formatGrams(columnTotals[colIdx])}</span>
         ${colorNote}
       </th>`;
     })
     .join("");
 
   const bodyRows = baseIngredients
-    .map((baseIngredient) => {
+    .map((baseIngredient, rowIdx) => {
       const isWater = baseIngredient.role === "hydration-target";
-      let rowTotal = 0;
+      const rowTotal = cellMatrix[rowIdx].reduce((sum, v) => sum + v, 0);
 
       const cells = portions
-        .map((portion) => {
-          const match = portion.baseDoughIngredients.find((i) => i.id === baseIngredient.id);
-          const grams = match?.scaledRoundedGrams ?? 0;
-          rowTotal += grams;
-
+        .map((portion, colIdx) => {
+          const grams = cellMatrix[rowIdx][colIdx];
           return `<td class="num-cell${isWater && portion.colorLabel ? " water-cell" : ""}">${formatGrams(grams)}</td>`;
         })
         .join("");
 
+      const waterNote =
+        isWater && liquidColoringApplied
+          ? ` <span class="chip" style="font-size:0.7em;padding:1px 6px;vertical-align:middle">−${formatGrams(colorSplit.totalLiquidColoringAmount)} coloring</span>`
+          : "";
+
       return `<tr class="${isWater ? "water-row" : ""}">
-        <td class="ingredient-label">${escapeHtml(baseIngredient.name)}</td>
+        <td class="ingredient-label">${escapeHtml(baseIngredient.name)}${waterNote}</td>
         ${cells}
         <td class="num-cell total-cell">${formatGrams(rowTotal)}</td>
       </tr>`;
@@ -564,6 +584,12 @@ function renderColorSplit(colorSplit) {
         </div>`
       : "";
 
+  const liquidChip = liquidColoringApplied
+    ? `<div class="chip-row">
+        <span class="chip">Liquid coloring (${formatGrams(colorSplit.totalLiquidColoringAmount)} total) distributed proportionally across dyed portions and subtracted from each color's water.</span>
+      </div>`
+    : "";
+
   return `
     <article class="result-card result-full">
       <h3>Base dough per color — ${escapeHtml(colorSplit.baseDoughRecipe.name)}</h3>
@@ -571,6 +597,7 @@ function renderColorSplit(colorSplit) {
         Total colored base dough: <strong>${formatGrams(colorSplit.totalColoredDough)}</strong>.
         For liquid coloring, dissolve the drops into that color's water portion before mixing.
       </p>
+      ${liquidChip}
       <div class="table-wrap color-matrix-wrap">
         <table class="color-matrix">
           <thead>
@@ -579,7 +606,7 @@ function renderColorSplit(colorSplit) {
               ${headerCells}
               <th class="portion-col total-col">
                 <span class="portion-col-name">Total</span>
-                <span class="portion-col-grams">${formatGrams(totalDoughGrams)}</span>
+                <span class="portion-col-grams">${formatGrams(grandTotal)}</span>
                 <span class="portion-color-label">all colors</span>
               </th>
             </tr>
@@ -596,7 +623,7 @@ function renderCalculatorResults(plan, inputState, colorSplit) {
   resultsRoot.innerHTML = `
     ${renderColorSplit(colorSplit)}
     ${renderSummary(plan, inputState)}
-    ${renderHydration(plan)}
+    ${renderHydration(plan, colorSplit)}
     ${renderInsight(plan)}
     ${renderIngredientTable(plan)}
   `;
@@ -810,14 +837,17 @@ function createRecipePayloadFromForm() {
 }
 
 function attachStudioMetadata(validatedRecipe, payload) {
-  const ingredientMetadata = (payload.ingredients ?? [])
-    .map((ingredient, index) => {
-      const name = String(ingredient?.name ?? "").trim();
+  // Match by position (same order as validateRecipeInput, which only filters empty-name rows).
+  // This avoids id-key collisions when two ingredients share the same name.
+  const filteredPayloadIngredients = (payload.ingredients ?? []).filter(
+    (ingredient) => String(ingredient?.name ?? "").trim().length > 0
+  );
 
-      if (!name) {
-        return null;
-      }
-
+  const nextRecipe = {
+    ...validatedRecipe,
+    ingredients: validatedRecipe.ingredients.map((ingredient, index) => {
+      const raw = filteredPayloadIngredients[index];
+      if (!raw) return ingredient;
       const {
         baseGrams: _baseGrams,
         id: _id,
@@ -825,25 +855,9 @@ function attachStudioMetadata(validatedRecipe, payload) {
         name: _name,
         role: _role,
         ...metadata
-      } = ingredient;
-
-      return {
-        id: buildIngredientId(name, index),
-        metadata
-      };
+      } = raw;
+      return { ...ingredient, ...metadata };
     })
-    .filter(Boolean);
-
-  const ingredientMetadataById = new Map(
-    ingredientMetadata.map((ingredient) => [ingredient.id, ingredient.metadata])
-  );
-
-  const nextRecipe = {
-    ...validatedRecipe,
-    ingredients: validatedRecipe.ingredients.map((ingredient, index) => ({
-      ...ingredient,
-      ...(ingredientMetadataById.get(ingredient.id) ?? ingredientMetadata[index]?.metadata ?? {})
-    }))
   };
 
   if (studioLibraryType === "design" && payload.baseDoughRecipeId) {
@@ -937,7 +951,12 @@ function removeIngredientRow(index) {
 
   studioState.ingredients.splice(index, 1);
 
-  if (!studioState.ingredients.some((ingredient) => ingredient.role === "hydration-target")) {
+  // For base-dough recipes, always keep a hydration target assigned.
+  // For design recipes, it's optional — don't auto-assign.
+  if (
+    studioLibraryType === "base-dough" &&
+    !studioState.ingredients.some((ingredient) => ingredient.role === "hydration-target")
+  ) {
     studioState.ingredients[studioState.ingredients.length - 1].role = "hydration-target";
   }
 
@@ -975,7 +994,7 @@ viewTabs.forEach((tab) => {
 });
 
 recipeSelect.addEventListener("change", () => {
-  syncRecipeDrivenFields();
+  syncRecipeDrivenFields({ syncBaseDough: true });
   calculateAndRender();
 });
 
@@ -993,7 +1012,7 @@ form.addEventListener("change", () => {
 
 loadExampleButton.addEventListener("click", () => {
   applyCalculatorState(EXAMPLE_STATE);
-  syncRecipeDrivenFields();
+  syncRecipeDrivenFields({ syncBaseDough: true });
   calculateAndRender();
 });
 

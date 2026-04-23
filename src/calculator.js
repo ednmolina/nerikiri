@@ -104,14 +104,31 @@ export function calculateRecipePlan({
   );
   const safeSettings = sanitizeSettings(settings);
   const lossMultiplier = 1 - safeSettings.processLossPct / 100;
-  const requiredPreLossGrams =
-    lossMultiplier > 0 ? safeTargetOutputGrams / lossMultiplier : safeTargetOutputGrams;
-  const scaleFactor =
-    recipe.yieldGrams > 0 ? requiredPreLossGrams / recipe.yieldGrams : 0;
   const roundingIncrement = safeSettings.roundToIncrement;
 
+  // Filling is weighed per piece with no process loss. Separate the two.
+  const fillingBaseGrams = recipe.ingredients
+    .filter((ingredient) => ingredient.type === "filling")
+    .reduce((sum, ingredient) => sum + ingredient.baseGrams, 0);
+  const doughBaseGrams = recipe.yieldGrams - fillingBaseGrams;
+
+  // Base (no-loss) scale factor — used for filling and as the proportioning basis.
+  const baseScaleFactor = recipe.yieldGrams > 0 ? safeTargetOutputGrams / recipe.yieldGrams : 0;
+
+  // Process loss applies only to the dough component.
+  const targetDoughOutputGrams = baseScaleFactor * doughBaseGrams;
+  const requiredDoughPreLossGrams =
+    lossMultiplier > 0 ? targetDoughOutputGrams / lossMultiplier : targetDoughOutputGrams;
+  const doughScaleFactor =
+    doughBaseGrams > 0 ? requiredDoughPreLossGrams / doughBaseGrams : baseScaleFactor;
+
+  const targetFillingOutputGrams = baseScaleFactor * fillingBaseGrams;
+  const requiredPreLossGrams = requiredDoughPreLossGrams + targetFillingOutputGrams;
+
   const scaledIngredients = recipe.ingredients.map((ingredient) => {
-    const scaledGrams = ingredient.baseGrams * scaleFactor;
+    const isFilling = ingredient.type === "filling";
+    const effectiveScale = isFilling ? baseScaleFactor : doughScaleFactor;
+    const scaledGrams = ingredient.baseGrams * effectiveScale;
 
     return {
       ...ingredient,
@@ -158,7 +175,7 @@ export function calculateRecipePlan({
     settings: safeSettings,
     targetOutputGrams: safeTargetOutputGrams,
     requiredPreLossGrams,
-    scaleFactor,
+    scaleFactor: doughScaleFactor,
     ingredients,
     hydration: {
       targetIngredientId: hydrationTarget?.id ?? null,
@@ -200,43 +217,68 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
 
   const roundingIncrement = plan.settings.roundToIncrement;
 
+  // Distribute liquid coloring only to portions that have a colorLabel (i.e. are actually
+  // dyed). Uncolored white portions get no liquid coloring deducted from their water.
+  const liquidColoringTotal =
+    plan.settings.coloringMode === "liquid" ? plan.settings.liquidColoringAmount : 0;
+  const waterIngredientId =
+    baseDoughRecipe.ingredients.find((i) => i.role === "hydration-target")?.id ?? null;
+  const coloredPortionTotal = coloredIngredients
+    .filter((i) => i.colorLabel)
+    .reduce((sum, i) => sum + i.toAddGrams, 0);
+
   const scaledBaseIngredients = baseDoughRecipe.ingredients.map((ingredient) => {
     const scaledGrams = ingredient.baseGrams * scaleFactor;
+    const isWater = Boolean(waterIngredientId && ingredient.id === waterIngredientId);
+    const toAddGrams = isWater ? Math.max(0, scaledGrams - liquidColoringTotal) : scaledGrams;
     return {
       ...ingredient,
       scaledGrams,
+      isHydrationTarget: isWater,
       scaledRoundedGrams:
         roundingIncrement !== undefined
-          ? roundToIncrement(scaledGrams, roundingIncrement)
-          : scaledGrams
+          ? roundToIncrement(toAddGrams, roundingIncrement)
+          : toAddGrams
     };
   });
 
-  function scaleBaseForPortion(portionGrams) {
+  function scaleBaseForPortion(portionGrams, portionLiquidContribution) {
     const portionScale =
       baseDoughRecipe.yieldGrams > 0 ? portionGrams / baseDoughRecipe.yieldGrams : 0;
     return baseDoughRecipe.ingredients.map((ingredient) => {
       const scaledGrams = ingredient.baseGrams * portionScale;
+      const isWater = Boolean(waterIngredientId && ingredient.id === waterIngredientId);
+      const toAddGrams = isWater
+        ? Math.max(0, scaledGrams - portionLiquidContribution)
+        : scaledGrams;
       return {
         ...ingredient,
         scaledGrams,
+        isHydrationTarget: isWater,
         scaledRoundedGrams:
           roundingIncrement !== undefined
-            ? roundToIncrement(scaledGrams, roundingIncrement)
-            : scaledGrams
+            ? roundToIncrement(toAddGrams, roundingIncrement)
+            : toAddGrams
       };
     });
   }
 
   return {
-    colorPortions: coloredIngredients.map((ingredient) => ({
-      id: ingredient.id,
-      name: ingredient.name,
-      colorLabel: ingredient.colorLabel ?? null,
-      totalGrams: ingredient.toAddGrams,
-      totalRoundedGrams: ingredient.toAddRoundedGrams,
-      baseDoughIngredients: scaleBaseForPortion(ingredient.toAddGrams)
-    })),
+    colorPortions: coloredIngredients.map((ingredient) => {
+      const portionLiquidContribution =
+        liquidColoringTotal > 0 && ingredient.colorLabel && coloredPortionTotal > 0
+          ? liquidColoringTotal * (ingredient.toAddGrams / coloredPortionTotal)
+          : 0;
+      return {
+        id: ingredient.id,
+        name: ingredient.name,
+        colorLabel: ingredient.colorLabel ?? null,
+        totalGrams: ingredient.toAddGrams,
+        totalRoundedGrams: ingredient.toAddRoundedGrams,
+        portionLiquidContribution,
+        baseDoughIngredients: scaleBaseForPortion(ingredient.toAddGrams, portionLiquidContribution)
+      };
+    }),
     fillingPortions: fillingIngredients.map((ingredient) => ({
       id: ingredient.id,
       name: ingredient.name,
@@ -244,6 +286,8 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
       totalRoundedGrams: ingredient.toAddRoundedGrams
     })),
     totalColoredDough,
+    totalLiquidColoringAmount: liquidColoringTotal,
+    waterIngredientId,
     baseDoughRecipe,
     scaledBaseIngredients,
     scaleFactor
