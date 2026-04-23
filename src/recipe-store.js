@@ -19,9 +19,15 @@ function mergeIngredientCollections(defaultIngredients = [], savedIngredients = 
     defaultIngredients.map((ingredient) => [ingredient.id, ingredient])
   );
 
+  // Position fallback is only safe when lists are the same length.
+  // When counts differ (user added or removed ingredients), falling back by index
+  // would transplant metadata from the wrong default ingredient.
+  const usePositionFallback = savedIngredients.length === defaultIngredients.length;
+
   return savedIngredients.map((savedIngredient, index) => {
     const defaultIngredient =
-      defaultIngredientById.get(savedIngredient?.id) ?? defaultIngredients[index] ?? {};
+      defaultIngredientById.get(savedIngredient?.id) ??
+      (usePositionFallback ? defaultIngredients[index] ?? {} : {});
 
     return {
       ...defaultIngredient,
@@ -176,11 +182,11 @@ export function validateRecipeInput(recipeInput, existingRecipes = []) {
     return { ok: false, error: "Each ingredient needs a grams value above zero." };
   }
 
-  const hydrationTarget = ingredients.find(
-    (ingredient) => ingredient.id === hydrationTargetIngredientId
-  );
+  const hydrationTarget = hydrationTargetIngredientId
+    ? ingredients.find((ingredient) => ingredient.id === hydrationTargetIngredientId)
+    : null;
 
-  if (!hydrationTarget) {
+  if (hydrationTargetIngredientId && !hydrationTarget) {
     return { ok: false, error: "Choose which ingredient should receive hydration adjustment." };
   }
 
