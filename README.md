@@ -182,7 +182,7 @@ But it only applies when the selected recipe itself declares a hydration target 
 
 That means:
 
-- dough-style recipes with a `hydrationTargetIngredientId` can use liquid-color correction
+- dough-style recipes with a `hydrationTargetIngredientId` can use liquid-color correction (though use with caution as paste and liquid colors vary in hydration)
 - the current built-in finished-piece recipes do not use hydration adjustment directly
 - even though the shared base dough recipe contains water, the current base-dough decomposition report is informational scaling, not a hydration-adjusted dough planner
 
