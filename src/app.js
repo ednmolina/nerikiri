@@ -1,4 +1,4 @@
-import { calculateRecipePlan, deriveTargetOutputGrams, calculateColorSplit } from "./calculator.js";
+import { calculateRecipePlan, deriveTargetOutputGrams, calculateColorSplit } from "./calculator.js?v=20260428-sunflower-color-split";
 import {
   buildIngredientId,
   loadBaseDoughRecipes,
@@ -8,7 +8,7 @@ import {
   upsertBaseDoughRecipe,
   upsertRecipe,
   validateRecipeInput
-} from "./recipe-store.js";
+} from "./recipe-store.js?v=20260428-sunflower-color-split";
 
 const DEFAULT_STATE = {
   recipeId: "iris-nerikiri",
