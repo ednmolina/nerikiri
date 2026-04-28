@@ -7,6 +7,7 @@ import {
   loadRecipes,
   saveBaseDoughRecipes,
   upsertBaseDoughRecipe,
+  upsertRecipe,
   validateRecipeInput
 } from "../src/recipe-store.js";
 
@@ -119,6 +120,83 @@ test("loadRecipes keeps saved built-in recipe overrides without losing default m
     assert.equal(irisRecipe?.ingredients[1].name, "Violet dough");
     assert.equal(irisRecipe?.ingredients[1].type, "colored-dough");
     assert.equal(irisRecipe?.ingredients[1].colorLabel, "purple");
+  });
+});
+
+test("loadRecipes infers color-split metadata for saved custom design recipes", () => {
+  withMockWindow((localStorage) => {
+    localStorage.setItem(
+      "nerikiri-recipes-v3",
+      JSON.stringify([
+        {
+          id: "sunflower-nerikiri",
+          name: "Sunflower Nerikiri",
+          description: "Custom sunflower design.",
+          yieldGrams: 56,
+          baseDoughRecipeId: "base-nerikiri-paste",
+          ingredients: [
+            { id: "white-nerikiri-paste", name: "White nerikiri paste", baseGrams: 44 },
+            { id: "yellow-nerikiri-paste", name: "Yellow nerikiri paste", baseGrams: 8 },
+            { id: "green-nerikiri-paste", name: "Green nerikiri paste", baseGrams: 4 },
+            { id: "inner-filling-paste", name: "Inner filling paste", baseGrams: 13 }
+          ]
+        }
+      ])
+    );
+
+    const sunflowerRecipe = loadRecipes().find(
+      (recipe) => recipe.id === "sunflower-nerikiri"
+    );
+
+    assert.equal(sunflowerRecipe?.ingredients[0].type, "colored-dough");
+    assert.equal(sunflowerRecipe?.ingredients[0].colorLabel, undefined);
+    assert.equal(sunflowerRecipe?.ingredients[1].type, "colored-dough");
+    assert.equal(sunflowerRecipe?.ingredients[1].colorLabel, "yellow");
+    assert.equal(sunflowerRecipe?.ingredients[2].colorLabel, "green");
+    assert.equal(sunflowerRecipe?.ingredients[3].type, "filling");
+  });
+});
+
+test("upsertRecipe infers metadata before updating the in-memory recipe list", () => {
+  const recipes = upsertRecipe([], {
+    id: "sunflower-nerikiri",
+    name: "Sunflower Nerikiri",
+    yieldGrams: 56,
+    baseDoughRecipeId: "base-nerikiri-paste",
+    ingredients: [
+      { id: "white-nerikiri-paste", name: "White nerikiri paste", baseGrams: 44 },
+      { id: "purple-nerikiri-paste", name: "Purple nerikiri paste", baseGrams: 4 },
+      { id: "inner-filling-paste", name: "Inner filling paste", baseGrams: 13 }
+    ]
+  });
+
+  assert.equal(recipes[0].ingredients[0].type, "colored-dough");
+  assert.equal(recipes[0].ingredients[1].colorLabel, "purple");
+  assert.equal(recipes[0].ingredients[2].type, "filling");
+});
+
+test("loadRecipes leaves standalone dough recipes as plain ingredient lists", () => {
+  withMockWindow((localStorage) => {
+    localStorage.setItem(
+      "nerikiri-recipes-v3",
+      JSON.stringify([
+        {
+          id: "house-dough",
+          name: "House Dough",
+          description: "Standalone dough recipe.",
+          yieldGrams: 330,
+          ingredients: [
+            { id: "white-bean-paste", name: "White bean paste", baseGrams: 300 },
+            { id: "water", name: "Water", baseGrams: 20 }
+          ]
+        }
+      ])
+    );
+
+    const houseDough = loadRecipes().find((recipe) => recipe.id === "house-dough");
+
+    assert.equal(houseDough?.ingredients[0].type, undefined);
+    assert.equal(houseDough?.ingredients[1].type, undefined);
   });
 });
 

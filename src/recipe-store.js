@@ -3,6 +3,18 @@ import { BASE_DOUGH_RECIPES, DEFAULT_RECIPES } from "./data.js";
 const STORAGE_KEY = "nerikiri-recipes-v3";
 const BASE_DOUGH_STORAGE_KEY = "nerikiri-base-doughs-v1";
 
+const COLOR_LABELS = [
+  { tokens: ["violet", "purple"], label: "purple" },
+  { tokens: ["pink", "rose"], label: "pink" },
+  { tokens: ["yellow", "gold"], label: "yellow" },
+  { tokens: ["green", "leaf"], label: "green" },
+  { tokens: ["orange"], label: "orange" },
+  { tokens: ["red"], label: "red" },
+  { tokens: ["blue"], label: "blue" },
+  { tokens: ["brown"], label: "brown" },
+  { tokens: ["black"], label: "black" }
+];
+
 function cloneRecipes(recipes = []) {
   return recipes.map((recipe) => ({
     ...recipe,
@@ -135,6 +147,51 @@ function upsertCollection(recipes, recipe) {
   return nextRecipes;
 }
 
+function inferColorLabel(name) {
+  const normalizedName = String(name ?? "").toLowerCase();
+
+  if (normalizedName.includes("white")) {
+    return null;
+  }
+
+  return (
+    COLOR_LABELS.find((color) =>
+      color.tokens.some((token) => normalizedName.includes(token))
+    )?.label ?? null
+  );
+}
+
+function inferDesignIngredientMetadata(ingredient) {
+  if (ingredient.type) {
+    return ingredient;
+  }
+
+  const normalizedName = String(ingredient.name ?? "").toLowerCase();
+
+  if (normalizedName.includes("filling")) {
+    return { ...ingredient, type: "filling" };
+  }
+
+  const colorLabel = inferColorLabel(ingredient.name);
+
+  return {
+    ...ingredient,
+    type: "colored-dough",
+    ...(colorLabel ? { colorLabel } : {})
+  };
+}
+
+function normalizeDesignRecipe(recipe) {
+  if (!recipe?.baseDoughRecipeId) {
+    return recipe;
+  }
+
+  return {
+    ...recipe,
+    ingredients: (recipe.ingredients ?? []).map(inferDesignIngredientMetadata)
+  };
+}
+
 export function buildIngredientId(name, index) {
   return slugify(name) || `ingredient-${index + 1}`;
 }
@@ -223,15 +280,15 @@ export function validateRecipeInput(recipeInput, existingRecipes = []) {
 }
 
 export function loadRecipes() {
-  return loadCollection(STORAGE_KEY, DEFAULT_RECIPES);
+  return loadCollection(STORAGE_KEY, DEFAULT_RECIPES).map(normalizeDesignRecipe);
 }
 
 export function saveRecipes(recipes) {
-  saveCollection(STORAGE_KEY, recipes);
+  saveCollection(STORAGE_KEY, recipes.map(normalizeDesignRecipe));
 }
 
 export function upsertRecipe(recipes, recipe) {
-  return upsertCollection(recipes, recipe);
+  return upsertCollection(recipes, normalizeDesignRecipe(recipe));
 }
 
 export function loadBaseDoughRecipes() {

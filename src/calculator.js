@@ -12,6 +12,50 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+const COLOR_LABELS = [
+  { tokens: ["violet", "purple"], label: "purple" },
+  { tokens: ["pink", "rose"], label: "pink" },
+  { tokens: ["yellow", "gold"], label: "yellow" },
+  { tokens: ["green", "leaf"], label: "green" },
+  { tokens: ["orange"], label: "orange" },
+  { tokens: ["red"], label: "red" },
+  { tokens: ["blue"], label: "blue" },
+  { tokens: ["brown"], label: "brown" },
+  { tokens: ["black"], label: "black" }
+];
+
+function inferColorLabel(name) {
+  const normalizedName = String(name ?? "").toLowerCase();
+
+  if (normalizedName.includes("white")) {
+    return null;
+  }
+
+  return (
+    COLOR_LABELS.find((color) =>
+      color.tokens.some((token) => normalizedName.includes(token))
+    )?.label ?? null
+  );
+}
+
+function inferColorSplitIngredient(ingredient) {
+  if (ingredient.type) {
+    return ingredient;
+  }
+
+  const normalizedName = String(ingredient.name ?? "").toLowerCase();
+
+  if (normalizedName.includes("filling")) {
+    return { ...ingredient, type: "filling" };
+  }
+
+  return {
+    ...ingredient,
+    type: "colored-dough",
+    colorLabel: inferColorLabel(ingredient.name)
+  };
+}
+
 export function roundToIncrement(value, increment) {
   const safeValue = toFiniteNumber(value, 0);
   const safeIncrement = toFiniteNumber(increment, 0);
@@ -97,6 +141,13 @@ export function calculateRecipePlan({
     throw new Error("A recipe is required.");
   }
 
+  const planRecipe = recipe.baseDoughRecipeId
+    ? {
+        ...recipe,
+        ingredients: recipe.ingredients.map(inferColorSplitIngredient)
+      }
+    : recipe;
+
   const safeTargetOutputGrams = clamp(
     toFiniteNumber(targetOutputGrams, 0),
     0,
@@ -107,13 +158,13 @@ export function calculateRecipePlan({
   const roundingIncrement = safeSettings.roundToIncrement;
 
   // Filling is weighed per piece with no process loss. Separate the two.
-  const fillingBaseGrams = recipe.ingredients
+  const fillingBaseGrams = planRecipe.ingredients
     .filter((ingredient) => ingredient.type === "filling")
     .reduce((sum, ingredient) => sum + ingredient.baseGrams, 0);
-  const doughBaseGrams = recipe.yieldGrams - fillingBaseGrams;
+  const doughBaseGrams = planRecipe.yieldGrams - fillingBaseGrams;
 
   // Base (no-loss) scale factor — used for filling and as the proportioning basis.
-  const baseScaleFactor = recipe.yieldGrams > 0 ? safeTargetOutputGrams / recipe.yieldGrams : 0;
+  const baseScaleFactor = planRecipe.yieldGrams > 0 ? safeTargetOutputGrams / planRecipe.yieldGrams : 0;
 
   // Process loss applies only to the dough component.
   const targetDoughOutputGrams = baseScaleFactor * doughBaseGrams;
@@ -125,7 +176,7 @@ export function calculateRecipePlan({
   const targetFillingOutputGrams = baseScaleFactor * fillingBaseGrams;
   const requiredPreLossGrams = requiredDoughPreLossGrams + targetFillingOutputGrams;
 
-  const scaledIngredients = recipe.ingredients.map((ingredient) => {
+  const scaledIngredients = planRecipe.ingredients.map((ingredient) => {
     const isFilling = ingredient.type === "filling";
     const effectiveScale = isFilling ? baseScaleFactor : doughScaleFactor;
     const scaledGrams = ingredient.baseGrams * effectiveScale;
@@ -140,7 +191,7 @@ export function calculateRecipePlan({
     };
   });
 
-  const hydrationTarget = getHydrationTargetIngredient(recipe, scaledIngredients);
+  const hydrationTarget = getHydrationTargetIngredient(planRecipe, scaledIngredients);
   const externalMoisture = resolveExternalMoisture(safeSettings);
   const baseHydrationGrams = hydrationTarget?.scaledGrams ?? 0;
   const adjustedHydrationGrams = clamp(
@@ -171,7 +222,7 @@ export function calculateRecipePlan({
   });
 
   return {
-    recipe,
+    recipe: planRecipe,
     settings: safeSettings,
     targetOutputGrams: safeTargetOutputGrams,
     requiredPreLossGrams,
@@ -197,13 +248,14 @@ export function calculateRecipePlan({
 export function calculateColorSplit({ plan, baseDoughRecipe }) {
   if (!baseDoughRecipe) return null;
 
-  const coloredIngredients = plan.ingredients.filter(
+  const colorSplitIngredients = plan.ingredients.map(inferColorSplitIngredient);
+  const coloredIngredients = colorSplitIngredients.filter(
     (ingredient) => ingredient.type === "colored-dough"
   );
 
   if (coloredIngredients.length === 0) return null;
 
-  const fillingIngredients = plan.ingredients.filter(
+  const fillingIngredients = colorSplitIngredients.filter(
     (ingredient) => ingredient.type === "filling"
   );
 
