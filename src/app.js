@@ -2,7 +2,7 @@ import {
   calculateColorSplit,
   calculateRecipePlan,
   checkRecipeConsistency
-} from "./calculator.js?v=20261102-wizard";
+} from "./calculator.js?v=20261102-mac";
 import {
   buildIngredientId,
   deleteRecipe,
@@ -14,7 +14,7 @@ import {
   upsertBaseDoughRecipe,
   upsertRecipe,
   validateRecipeInput
-} from "./recipe-store.js?v=20261102-wizard";
+} from "./recipe-store.js?v=20261102-mac";
 import { COLOR_SWATCHES, STEP_LABELS } from "./data.js";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,6 @@ const plan = {
   round: 0,
   coloring: "powder",
   liquid: 1.2,
-  moreOpen: false,
   matrixOpen: false,
   done: {},
   setupDone: false,
@@ -311,7 +310,7 @@ function renderPlan() {
   setOut("piecesLine", `${pieces} × ${n1(recipe.yieldGrams)} g = ${grams(pieces * recipe.yieldGrams)} of finished sweets`);
   setOut(
     "answersLine",
-    `${bi(recipe)} · ${pieces} ${pieces === 1 ? "piece" : "pieces"} · ${lossPct ? `+${lossPct}% extra` : "no extra"} · ${plan.coloring} coloring`,
+    `${bi(recipe)} · ${pieces} ${pieces === 1 ? "piece" : "pieces"} · ${lossPct ? `+${lossPct}% extra` : "no extra"} · ${plan.round ? `rounded up to ${n1(plan.round)} g` : "exact weights"} · ${plan.coloring} coloring`,
     true
   );
   setOut("titleHtml", bi(recipe), true);
@@ -545,16 +544,13 @@ function syncControls() {
     else el.removeAttribute("aria-current");
   });
 
-  const moreToggle = $("#more-toggle");
-  moreToggle.setAttribute("aria-expanded", String(plan.moreOpen));
-  $("#options-wide").hidden = !plan.moreOpen;
 }
 
 // ---------------------------------------------------------------------------
 // Guided setup
 // ---------------------------------------------------------------------------
 
-const WIZARD_STEPS = 4;
+const WIZARD_STEPS = 5;
 
 function choiceHtml(key, value, title, description) {
   return `<button type="button" class="choice" data-set="${key}" data-value="${escapeHtml(value)}">
@@ -596,6 +592,14 @@ function renderWizard() {
       ${choiceHtml("loss", 10, "Recommended · 10%", "A safe choice, especially the first few times.")}
       ${choiceHtml("loss", 15, "Generous · 15%", "Lots of small details, very soft dough, or you want spare.")}
     </div>`;
+  } else if (step === 4) {
+    title = "How precise is your scale?";
+    help = "Weigh-outs are always rounded up, so a portion is never lighter than it should be.";
+    body = `<div class="choices">
+      ${choiceHtml("round", 0, "Exact · 0.1 g", "For a precise digital scale.")}
+      ${choiceHtml("round", 0.5, "Half grams · 0.5 g", "Rounded up to the nearest half gram.")}
+      ${choiceHtml("round", 1, "Whole grams · 1 g", "Easiest to weigh on a basic kitchen scale.")}
+    </div>`;
   } else {
     title = "How will you color the dough?";
     help = "This only changes the water in the base dough.";
@@ -606,7 +610,7 @@ function renderWizard() {
     <label class="inline-field wiz-liquid" data-only-liquid>About how much liquid coloring in total? (g)
       <input class="fld num" type="number" inputmode="decimal" min="0" step="0.1" data-bind="liquid" />
     </label>
-    <p class="hint">You can change the base dough and rounding later under More options.</p>`;
+    <p class="hint">You can change any of these later, next to your recipe.</p>`;
   }
 
   $("#wiz-count").textContent = `Step ${step} of ${WIZARD_STEPS}`;
@@ -1129,9 +1133,12 @@ document.addEventListener("click", (event) => {
     case "change-answers":
       goWizard(1);
       break;
-    case "more-toggle":
-      plan.moreOpen = !plan.moreOpen;
-      syncControls();
+    case "sidebar-new":
+      plan.view = "studio";
+      selectInStudio("design", null);
+      refreshPlan();
+      window.scrollTo({ top: 0 });
+      $('[data-draft="name"]')?.focus();
       break;
     case "matrix-toggle":
       plan.matrixOpen = !plan.matrixOpen;

@@ -88,7 +88,7 @@ button { cursor: pointer; }
 
 /* ---------- top bar (wide) ---------- */
 .topbar { background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
-.topbar-inner { max-width: 1280px; margin: 0 auto; padding: 10px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 32px; }
+.topbar-inner { max-width: 1440px; margin: 0 auto; padding: 10px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 32px; }
 .brand { display: flex; align-items: baseline; gap: 10px; font-family: var(--display); }
 .brand-en { font-size: 24px; font-weight: 700; }
 .brand-jp { font-size: 16px; color: var(--secondary); }
@@ -100,7 +100,42 @@ button { cursor: pointer; }
 main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 64px; }
 .layout { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
 .card { background: var(--card); border-radius: var(--radius); padding: 22px; }
-.setup, .library { flex: 1 1 320px; max-width: 400px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto; }
+.library { flex: 1 1 320px; max-width: 400px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto; }
+
+/* Calculator, wide screens (Mac / laptop): designs sidebar | prep sheet | Batch panel */
+main:has(#view-plan:not([hidden])) { max-width: 1440px; }
+.plan-layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 310px;
+  grid-template-areas: "side sheet insp";
+  gap: 16px;
+  align-items: start;
+}
+.sidebar { grid-area: side; }
+.sheet { grid-area: sheet; }
+.inspector { grid-area: insp; }
+.sidebar, .inspector {
+  display: flex; flex-direction: column; gap: 18px; padding: 16px;
+  position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto;
+}
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.panel-title { margin: 0; font-size: 20px; font-weight: 700; }
+.sidebar .panel-title { font-size: 13px; font-weight: 600; color: var(--secondary); }
+.sidebar .recipe-card .card-summary { display: none; }
+.sidebar .recipe-card { padding: 10px 12px; gap: 7px; }
+.sidebar .recipe-card[aria-pressed="true"] { padding: 9px 11px; }
+.inspector .options { padding-top: 0; }
+.sheet-title { padding: 2px 4px 0; }
+.sheet-h1 { margin: 0; font-size: 30px; font-weight: 700; line-height: 1.2; }
+.sheet-h1 .jp { font-family: var(--display); font-size: 22px; font-weight: 600; }
+
+/* In-between widths (iPad portrait, small windows): designs become a row above the sheet */
+@media (min-width: 760px) and (max-width: 1099px) {
+  .plan-layout { grid-template-columns: minmax(0, 1fr) 290px; grid-template-areas: "side insp" "sheet insp"; }
+  .sidebar { position: static; max-height: none; }
+  .sidebar .recipe-cards { flex-direction: row; flex-wrap: wrap; }
+  .sidebar .recipe-card { flex: 1 1 180px; }
+}
 .sheet, .editor { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 
 .group { display: flex; flex-direction: column; gap: 8px; }
@@ -140,8 +175,6 @@ main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 64px; }
 .chip-btn[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--accent); }
 
 /* more options */
-.more { border-top: 1px solid var(--line); padding-top: 4px; }
-.more-toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 0; background: transparent; padding: 10px 0; min-height: 44px; font-weight: 600; text-align: left; }
 .options { display: flex; flex-direction: column; gap: 18px; padding-top: 8px; }
 .field-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--secondary); }
 .fld {
@@ -309,7 +342,8 @@ select.fld { padding-right: 32px; }
 
 @media (max-width: 759px) {
   body { font-size: 17px; }
-  .topbar, .setup { display: none; }
+  .topbar, .sidebar, .inspector, .sheet-title { display: none; }
+  .plan-layout { display: block; }
   main { padding: calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 190px); }
   body[data-view="studio"] main, body[data-view="wizard"] main { padding-bottom: calc(env(safe-area-inset-bottom) + 110px); }
   .wizard { padding: 20px 18px; border-radius: 18px; margin-top: 4px; }
@@ -371,6 +405,6 @@ select.fld { padding-right: 32px; }
 }
 
 @media print {
-  .topbar, .setup, .pieces-bar, .tabbar, .disclosure { display: none !important; }
+  .topbar, .sidebar, .inspector, .pieces-bar, .tabbar, .disclosure, .answers .secondary-btn { display: none !important; }
   body { background: #FFFFFF; }
 }

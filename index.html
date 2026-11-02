@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&display=swap" />
-    <link rel="stylesheet" href="./styles.css?v=20261102-wizard" />
+    <link rel="stylesheet" href="./styles.css?v=20261102-mac" />
   </head>
   <body data-view="plan">
     <header class="topbar">
@@ -33,7 +33,7 @@
         <div class="wizard">
           <div class="wiz-progress">
             <span id="wiz-count" class="hint"></span>
-            <span class="wiz-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="wiz-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
           </div>
           <h1 id="wiz-title" class="wiz-title" tabindex="-1"></h1>
           <p id="wiz-help" class="wiz-help"></p>
@@ -47,43 +47,15 @@
 
       <!-- Calculator -->
       <section class="view" id="view-plan" aria-label="Calculator">
-        <div class="layout">
-          <aside class="card setup" aria-labelledby="setup-title">
-            <h1 id="setup-title" class="display">Plan a batch</h1>
-
-            <div class="group">
-              <span class="group-label" id="recipe-label">What are you making?</span>
-              <div class="recipe-cards" id="recipe-cards" role="group" aria-labelledby="recipe-label"></div>
-            </div>
-
-            <div class="group">
-              <label class="group-label" for="pieces-wide">How many pieces?</label>
-              <div class="stepper stepper-large">
-                <button type="button" class="step-btn" data-step="-1" aria-label="One fewer piece">−</button>
-                <input id="pieces-wide" class="num" type="number" inputmode="numeric" min="1" step="1" data-bind="pieces" />
-                <button type="button" class="step-btn" data-step="1" aria-label="One more piece">+</button>
-              </div>
-              <p class="hint num" data-out="piecesLine"></p>
-            </div>
-
-            <div class="group">
-              <span class="group-label" id="loss-label">Extra dough for handling</span>
-              <div class="chips" role="group" aria-labelledby="loss-label">
-                <button type="button" class="chip-btn" data-set="loss" data-value="0">0%</button>
-                <button type="button" class="chip-btn" data-set="loss" data-value="5">5%</button>
-                <button type="button" class="chip-btn" data-set="loss" data-value="10">10%</button>
-                <button type="button" class="chip-btn" data-set="loss" data-value="15">15%</button>
-              </div>
-              <p class="hint">Covers dough lost to coloring, shaping and sticky hands. 10% is a safe start.</p>
-            </div>
-
-            <div class="more">
-              <button type="button" class="more-toggle" id="more-toggle" aria-expanded="false" aria-controls="options-wide">
-                <span>More options</span>
-                <span class="hint" data-out="moreSummary"></span>
+        <div class="plan-layout">
+          <aside class="card sidebar" aria-labelledby="designs-title">
+            <div class="panel-head">
+              <h2 id="designs-title" class="panel-title">Designs</h2>
+              <button type="button" class="icon-btn" id="sidebar-new" aria-label="New design" title="New design">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
               </button>
-              <div id="options-wide" class="options" hidden></div>
             </div>
+            <div class="recipe-cards" id="recipe-cards" role="group" aria-labelledby="designs-title"></div>
           </aside>
 
           <section class="sheet" aria-label="Prep sheet">
@@ -101,6 +73,10 @@
               <p class="hint num" data-out="piecesLine"></p>
             </div>
 
+            <div class="sheet-title">
+              <h1 class="sheet-h1" data-out="titleHtml"></h1>
+              <p class="hint num" data-out="piecesLine"></p>
+            </div>
             <div class="answers">
               <span class="answers-line" data-out="answersLine"></span>
               <button type="button" class="secondary-btn" id="change-answers">Change</button>
@@ -110,6 +86,30 @@
             <div id="totals"></div>
             <div id="minibatch"></div>
           </section>
+
+          <aside class="card inspector" aria-labelledby="batch-title">
+            <h2 id="batch-title" class="panel-title">Batch</h2>
+            <div class="group">
+              <label class="group-label" for="pieces-wide">Pieces</label>
+              <div class="stepper stepper-large">
+                <button type="button" class="step-btn" data-step="-1" aria-label="One fewer piece" title="One fewer piece">−</button>
+                <input id="pieces-wide" class="num" type="number" inputmode="numeric" min="1" step="1" data-bind="pieces" />
+                <button type="button" class="step-btn" data-step="1" aria-label="One more piece" title="One more piece">+</button>
+              </div>
+              <p class="hint num" data-out="piecesLine"></p>
+            </div>
+            <div class="group">
+              <span class="group-label" id="loss-label">Extra for handling</span>
+              <div class="chips" role="group" aria-labelledby="loss-label">
+                <button type="button" class="chip-btn" data-set="loss" data-value="0">None</button>
+                <button type="button" class="chip-btn" data-set="loss" data-value="5">5%</button>
+                <button type="button" class="chip-btn" data-set="loss" data-value="10">10%</button>
+                <button type="button" class="chip-btn" data-set="loss" data-value="15">15%</button>
+              </div>
+              <p class="hint">Covers coloring, shaping and sticky hands.</p>
+            </div>
+            <div id="options-wide" class="options"></div>
+          </aside>
         </div>
 
         <div class="pieces-bar glass" aria-label="Batch size">
@@ -177,6 +177,6 @@
       <div id="options-phone" class="options"></div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=20261102-wizard"></script>
+    <script type="module" src="./src/app.js?v=20261102-mac"></script>
   </body>
 </html>
