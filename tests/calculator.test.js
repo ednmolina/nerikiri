@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   calculateColorSplit,
   calculateRecipePlan,
-  deriveTargetOutputGrams
+  checkRecipeConsistency,
+  deriveTargetOutputGrams,
+  roundUpToIncrement
 } from "../src/calculator.js";
-import { BASE_DOUGH_RECIPES } from "../src/data.js";
+import { BASE_DOUGH_RECIPES, DEFAULT_RECIPES } from "../src/data.js";
 
 const hydrationRecipe = {
   id: "hydration-test-recipe",
@@ -199,4 +201,60 @@ test("untyped sunflower filling is not inflated by process loss", () => {
   assert.equal(filling?.toAddGrams.toFixed(2), "20.00");
   assert.equal(whiteDough?.toAddGrams.toFixed(2), "24.44");
   assert.equal(plan.requiredPreLossGrams.toFixed(2), "57.78");
+});
+
+test("roundUpToIncrement never rounds down and ignores float noise", () => {
+  assert.equal(roundUpToIncrement(0.48, 0.5), 0.5);
+  assert.equal(roundUpToIncrement(4.0000000001, 1), 4);
+  assert.equal(roundUpToIncrement(4.01, 1), 5);
+  assert.equal(roundUpToIncrement(3.3, 0), 3.3);
+});
+
+test("rounded color-split weigh-outs never come in under the exact amounts", () => {
+  const baseDoughRecipe = BASE_DOUGH_RECIPES[0];
+  for (const recipe of DEFAULT_RECIPES) {
+    for (const pieceCount of [1, 3, 4, 7, 12]) {
+      for (const roundToIncrement of [0.1, 0.25, 0.5]) {
+        const plan = calculateRecipePlan({
+          recipe,
+          targetOutputGrams: pieceCount * recipe.yieldGrams,
+          settings: { roundToIncrement }
+        });
+        const split = calculateColorSplit({ plan, baseDoughRecipe });
+        for (const portion of split.colorPortions) {
+          for (const ingredient of portion.baseDoughIngredients) {
+            assert.ok(
+              ingredient.scaledRoundedGrams >= ingredient.scaledGrams - 1e-9,
+              `${recipe.id} x${pieceCount} ${portion.id}/${ingredient.id} rounded below exact`
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
+test("checkRecipeConsistency flags yields that cannot add up", () => {
+  const recipe = {
+    name: "Mismatch",
+    yieldGrams: 30,
+    ingredients: [{ baseGrams: 20 }, { baseGrams: 8 }]
+  };
+  const impossibleBase = {
+    name: "Impossible",
+    yieldGrams: 400,
+    ingredients: [{ baseGrams: 300 }, { baseGrams: 50 }]
+  };
+  const noLossBase = {
+    name: "No loss",
+    yieldGrams: 350,
+    ingredients: [{ baseGrams: 300 }, { baseGrams: 50 }]
+  };
+  assert.equal(checkRecipeConsistency({ recipe }).length, 1);
+  assert.match(checkRecipeConsistency({ baseDoughRecipe: impossibleBase })[0], /cannot weigh more/);
+  assert.match(checkRecipeConsistency({ baseDoughRecipe: noLossBase })[0], /no moisture/);
+  assert.deepEqual(
+    checkRecipeConsistency({ recipe: DEFAULT_RECIPES[0], baseDoughRecipe: BASE_DOUGH_RECIPES[0] }),
+    []
+  );
 });

@@ -1,4 +1,4 @@
-import { calculateRecipePlan, deriveTargetOutputGrams, calculateColorSplit } from "./calculator.js?v=20260428-sunflower-color-split";
+import { calculateRecipePlan, deriveTargetOutputGrams, calculateColorSplit } from "./calculator.js?v=20261102-roundup-warnings";
 import {
   buildIngredientId,
   loadBaseDoughRecipes,
@@ -590,6 +590,15 @@ function renderColorSplit(colorSplit) {
       </div>`
     : "";
 
+  const warningChips =
+    colorSplit.warnings?.length > 0
+      ? `<div class="chip-row warning">
+          ${colorSplit.warnings
+            .map((w) => `<span class="chip warning">${escapeHtml(w)}</span>`)
+            .join("")}
+        </div>`
+      : "";
+
   return `
     <article class="result-card result-full">
       <h3>Base dough per color — ${escapeHtml(colorSplit.baseDoughRecipe.name)}</h3>
@@ -598,6 +607,7 @@ function renderColorSplit(colorSplit) {
         For liquid coloring, dissolve the drops into that color's water portion before mixing.
       </p>
       ${liquidChip}
+      ${warningChips}
       <div class="table-wrap color-matrix-wrap">
         <table class="color-matrix">
           <thead>
