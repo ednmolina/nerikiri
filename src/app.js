@@ -543,6 +543,7 @@ function syncControls() {
     if (el.dataset.go === section) el.setAttribute("aria-current", "page");
     else el.removeAttribute("aria-current");
   });
+  if (typeof syncPaneToggles === "function" && $("#toggle-sidebar")) syncPaneToggles();
 
 }
 
@@ -632,7 +633,7 @@ function goWizard(step) {
   plan.view = "wizard";
   renderWizard();
   refreshPlan();
-  window.scrollTo({ top: 0 });
+  scrollToTop();
   $("#wiz-title").focus({ preventScroll: true });
 }
 
@@ -640,7 +641,7 @@ function finishWizard() {
   plan.setupDone = true;
   plan.view = "plan";
   refreshPlan();
-  window.scrollTo({ top: 0 });
+  scrollToTop();
 }
 
 function refreshPlan() {
@@ -1080,22 +1081,65 @@ function afterLibraryChange() {
 // Events
 // ---------------------------------------------------------------------------
 
+// Each pane scrolls on its own on iPad and Mac; the page scrolls on iPhone.
+function scrollToTop() {
+  window.scrollTo({ top: 0 });
+  $$(".sheet, .editor, #view-wizard, .library").forEach((el) => (el.scrollTop = 0));
+}
+
+// Sidebar and inspector toggles. Wide windows show both panes; below 1100px the sidebar slides over the content.
+const wideWindow = window.matchMedia("(min-width: 1100px)");
+function sidebarShown() {
+  const body = document.body;
+  if (plan.view === "plan" && !wideWindow.matches) return body.classList.contains("sidebar-open");
+  return !body.classList.contains("sidebar-collapsed");
+}
+function syncPaneToggles() {
+  $("#toggle-sidebar").setAttribute("aria-pressed", String(sidebarShown()));
+  $("#toggle-inspector").setAttribute("aria-pressed", String(!document.body.classList.contains("inspector-collapsed")));
+}
+function toggleSidebar() {
+  const body = document.body;
+  if (plan.view === "plan" && !wideWindow.matches) body.classList.toggle("sidebar-open");
+  else body.classList.toggle("sidebar-collapsed");
+  syncPaneToggles();
+}
+function toggleInspector() {
+  document.body.classList.toggle("inspector-collapsed");
+  syncPaneToggles();
+}
+function closeSidebarOverlay() {
+  document.body.classList.remove("sidebar-open");
+  syncPaneToggles();
+}
+wideWindow.addEventListener("change", closeSidebarOverlay);
+document.addEventListener("pointerdown", (event) => {
+  if (document.body.classList.contains("sidebar-open") && !event.target.closest(".sidebar, #toggle-sidebar")) closeSidebarOverlay();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.metaKey && event.ctrlKey && event.code === "KeyS") { event.preventDefault(); toggleSidebar(); }
+  else if (event.metaKey && event.altKey && event.code === "KeyI") { event.preventDefault(); toggleInspector(); }
+  else if (event.key === "Escape") closeSidebarOverlay();
+});
+
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button, [data-go]");
   if (!target) return;
 
   if (target.dataset.go) {
+    closeSidebarOverlay();
     if (target.dataset.go === "plan" && !plan.setupDone) {
       goWizard(plan.wizStep);
       return;
     }
     plan.view = target.dataset.go;
     refreshPlan();
-    window.scrollTo({ top: 0 });
+    scrollToTop();
     return;
   }
   if (target.dataset.set) {
     setPlanValue(target.dataset.set, target.dataset.value);
+    if (target.dataset.set === "recipeId") closeSidebarOverlay();
     // Picking a design on the first question moves straight on to the next one.
     if (plan.view === "wizard" && plan.wizStep === 1 && target.dataset.set === "recipeId") goWizard(2);
     else if (plan.view === "wizard") $$("#wiz-body [data-only-liquid]").forEach((el) => (el.hidden = plan.coloring !== "liquid"));
@@ -1130,6 +1174,12 @@ document.addEventListener("click", (event) => {
       if (plan.wizStep === 1) finishWizard();
       else goWizard(plan.wizStep - 1);
       break;
+    case "toggle-sidebar":
+      toggleSidebar();
+      break;
+    case "toggle-inspector":
+      toggleInspector();
+      break;
     case "change-answers":
       goWizard(1);
       break;
@@ -1137,7 +1187,7 @@ document.addEventListener("click", (event) => {
       plan.view = "studio";
       selectInStudio("design", null);
       refreshPlan();
-      window.scrollTo({ top: 0 });
+      scrollToTop();
       $('[data-draft="name"]')?.focus();
       break;
     case "matrix-toggle":
@@ -1262,3 +1312,4 @@ renderOptions();
 selectInStudio("design", recipes[0]?.id);
 renderWizard();
 refreshPlan();
+syncPaneToggles();

@@ -21,15 +21,15 @@ New visitors aren't dropped straight into the full breakdown. A short guided set
 
 **Show my recipe** then opens the full prep sheet, with a one-line summary of the answers and a **Change** button to go through them again. Returning visits go straight to the prep sheet.
 
-## One app, arranged for the screen
+## One web app, dressed for each Apple platform
 
-| Screen | Layout |
+| Device | What you get |
 | --- | --- |
-| Mac, laptop (≥ 1100 px) | Top bar with **Calculator** and **Recipe Studio**. **Designs** sidebar on the left, the prep sheet in the middle, and a **Batch** panel on the right with pieces, extra dough, base dough, rounding and coloring. |
-| iPad, small windows (760–1099 px) | Designs in a row above the prep sheet, Batch panel on the right. |
-| iPhone (< 760 px) | Large title you tap to switch designs, the prep sheet scrolling underneath, a floating **Pieces** bar above a **Plan / Recipes** tab bar, and a **Batch Options** sheet for base dough, rounding and coloring. |
+| Mac (mouse or trackpad) | A Mac window: a toolbar with sidebar and inspector toggles and a **Calculator / Recipe Studio** segmented control, a **Designs** sidebar, the prep sheet, and a **Batch** inspector. Uses 13 pt Mac-sized controls and segmented pickers. ⌃⌘S hides the sidebar and ⌥⌘I hides the inspector. |
+| iPad (touch) | The same split view at touch size: 44 pt controls, round toolbar buttons and capsule segments. |
+| iPhone (< 760 px) | A large title you tap to switch designs, an inset grouped prep sheet, a floating **Pieces** bar above a **Plan / Recipes** tab bar, and a **Batch Options** sheet. |
 
-Colors follow Apple's grouped system palette and switch automatically with the device's light or dark appearance. On iPhone, "Add to Home Screen" opens it full screen.
+Below 1100 px wide (an iPad in portrait or a narrow Mac window), the sidebar tucks away and slides over the sheet when you tap the sidebar button, like a split view. Colors follow Apple's grouped system palette and switch automatically with light and dark appearance. On iPhone, "Add to Home Screen" opens it full screen.
 
 ## Names are always English + Japanese
 
