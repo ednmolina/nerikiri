@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&display=swap" />
-    <link rel="stylesheet" href="./styles.css?v=20261102-prep-sheet" />
+    <link rel="stylesheet" href="./styles.css?v=20261102-wizard" />
   </head>
   <body data-view="plan">
     <header class="topbar">
@@ -28,6 +28,23 @@
     </header>
 
     <main>
+      <!-- Guided setup: one question per screen, shown on the first visit -->
+      <section class="view" id="view-wizard" aria-labelledby="wiz-title" hidden>
+        <div class="wizard">
+          <div class="wiz-progress">
+            <span id="wiz-count" class="hint"></span>
+            <span class="wiz-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          </div>
+          <h1 id="wiz-title" class="wiz-title" tabindex="-1"></h1>
+          <p id="wiz-help" class="wiz-help"></p>
+          <div id="wiz-body" class="wiz-body"></div>
+          <div class="wiz-nav">
+            <button type="button" class="text-btn" id="wiz-back">Back</button>
+            <button type="button" class="primary-btn" id="wiz-next">Next</button>
+          </div>
+        </div>
+      </section>
+
       <!-- Calculator -->
       <section class="view" id="view-plan" aria-label="Calculator">
         <div class="layout">
@@ -84,6 +101,10 @@
               <p class="hint num" data-out="piecesLine"></p>
             </div>
 
+            <div class="answers">
+              <span class="answers-line" data-out="answersLine"></span>
+              <button type="button" class="secondary-btn" id="change-answers">Change</button>
+            </div>
             <div class="summary" id="summary"></div>
             <div id="steps" class="steps"></div>
             <div id="totals"></div>
@@ -156,6 +177,6 @@
       <div id="options-phone" class="options"></div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=20261102-prep-sheet"></script>
+    <script type="module" src="./src/app.js?v=20261102-wizard"></script>
   </body>
 </html>
