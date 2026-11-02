@@ -67,6 +67,58 @@ export function roundToIncrement(value, increment) {
   return Math.round(safeValue / safeIncrement) * safeIncrement;
 }
 
+// Rounds UP to the increment so a weigh-out is never lighter than the exact amount.
+// Used for base-dough weigh-outs: rounding each small ingredient to nearest can drop
+// whole grams per color (e.g. 0.48 g sugar -> 0 g), which adds up to missing dough.
+export function roundUpToIncrement(value, increment) {
+  const safeValue = toFiniteNumber(value, 0);
+  const safeIncrement = toFiniteNumber(increment, 0);
+
+  if (safeIncrement <= 0) {
+    return safeValue;
+  }
+
+  // Small epsilon so float noise (e.g. 4.0000000001) doesn't bump up a full increment.
+  return Math.ceil(safeValue / safeIncrement - 1e-9) * safeIncrement;
+}
+
+function sumBaseGrams(ingredients = []) {
+  return ingredients.reduce((sum, ingredient) => sum + toFiniteNumber(ingredient.baseGrams, 0), 0);
+}
+
+// Flags recipe data that will make totals not add up.
+export function checkRecipeConsistency({ recipe, baseDoughRecipe } = {}) {
+  const warnings = [];
+  const tolerance = 0.01;
+
+  if (recipe) {
+    const portionSum = sumBaseGrams(recipe.ingredients);
+    if (recipe.yieldGrams > 0 && Math.abs(portionSum - recipe.yieldGrams) > tolerance) {
+      warnings.push(
+        `${recipe.name}: piece weight is ${recipe.yieldGrams} g but its portions add up to ${portionSum} g, ` +
+          "so the color split will not match the piece count."
+      );
+    }
+  }
+
+  if (baseDoughRecipe) {
+    const rawSum = sumBaseGrams(baseDoughRecipe.ingredients);
+    if (baseDoughRecipe.yieldGrams - rawSum > tolerance) {
+      warnings.push(
+        `${baseDoughRecipe.name}: yield is ${baseDoughRecipe.yieldGrams} g but the raw ingredients only add up to ${rawSum} g. ` +
+          "Cooked dough cannot weigh more than what goes in, so this will leave you short."
+      );
+    } else if (Math.abs(baseDoughRecipe.yieldGrams - rawSum) <= tolerance) {
+      warnings.push(
+        `${baseDoughRecipe.name}: yield equals the raw ingredient total (${rawSum} g), which assumes no moisture is cooked off. ` +
+          "Weigh one cooked batch and enter that as the yield."
+      );
+    }
+  }
+
+  return warnings;
+}
+
 export function deriveTargetOutputGrams(input) {
   const mode = input?.mode === "batch" ? "batch" : "exact";
 
@@ -289,7 +341,7 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
       isHydrationTarget: isWater,
       scaledRoundedGrams:
         roundingIncrement !== undefined
-          ? roundToIncrement(toAddGrams, roundingIncrement)
+          ? roundUpToIncrement(toAddGrams, roundingIncrement)
           : toAddGrams
     };
   });
@@ -309,7 +361,7 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
         isHydrationTarget: isWater,
         scaledRoundedGrams:
           roundingIncrement !== undefined
-            ? roundToIncrement(toAddGrams, roundingIncrement)
+            ? roundUpToIncrement(toAddGrams, roundingIncrement)
             : toAddGrams
       };
     });
@@ -326,7 +378,10 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
         name: ingredient.name,
         colorLabel: ingredient.colorLabel ?? null,
         totalGrams: ingredient.toAddGrams,
-        totalRoundedGrams: ingredient.toAddRoundedGrams,
+        totalRoundedGrams:
+          roundingIncrement !== undefined
+            ? roundUpToIncrement(ingredient.toAddGrams, roundingIncrement)
+            : ingredient.toAddGrams,
         portionLiquidContribution,
         baseDoughIngredients: scaleBaseForPortion(ingredient.toAddGrams, portionLiquidContribution)
       };
@@ -335,13 +390,17 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
       id: ingredient.id,
       name: ingredient.name,
       totalGrams: ingredient.toAddGrams,
-      totalRoundedGrams: ingredient.toAddRoundedGrams
+      totalRoundedGrams:
+        roundingIncrement !== undefined
+          ? roundUpToIncrement(ingredient.toAddGrams, roundingIncrement)
+          : ingredient.toAddGrams
     })),
     totalColoredDough,
     totalLiquidColoringAmount: liquidColoringTotal,
     waterIngredientId,
     baseDoughRecipe,
     scaledBaseIngredients,
-    scaleFactor
+    scaleFactor,
+    warnings: checkRecipeConsistency({ recipe: plan.recipe, baseDoughRecipe })
   };
 }

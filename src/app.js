@@ -1,6 +1,12 @@
-import { calculateRecipePlan, deriveTargetOutputGrams, calculateColorSplit } from "./calculator.js?v=20260428-sunflower-color-split";
+import {
+  calculateColorSplit,
+  calculateRecipePlan,
+  checkRecipeConsistency
+} from "./calculator.js?v=20261102-prep-sheet";
 import {
   buildIngredientId,
+  deleteRecipe,
+  isBuiltInRecipe,
   loadBaseDoughRecipes,
   loadRecipes,
   saveBaseDoughRecipes,
@@ -8,1092 +14,1119 @@ import {
   upsertBaseDoughRecipe,
   upsertRecipe,
   validateRecipeInput
-} from "./recipe-store.js?v=20260428-sunflower-color-split";
+} from "./recipe-store.js?v=20261102-prep-sheet";
+import { COLOR_SWATCHES, STEP_LABELS } from "./data.js";
 
-const DEFAULT_STATE = {
-  recipeId: "iris-nerikiri",
-  baseDoughRecipeId: "base-nerikiri-paste",
-  mode: "exact",
-  pieceCount: 1,
-  pieceWeightGrams: 41,
-  batchWeightGrams: 41,
-  processLossPct: 0,
-  roundToIncrement: "",
-  coloringMode: "powder",
-  liquidColoringAmount: 0
-};
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
 
-const EXAMPLE_STATE = {
-  ...DEFAULT_STATE
-};
-
-const EMPTY_RECIPE_TEMPLATE = {
-  originalId: "",
-  name: "",
-  description: "",
-  yieldGrams: 41,
-  baseDoughRecipeId: "base-nerikiri-paste",
-  hydrationTargetIngredientId: "",
-  ingredients: [
-    { name: "White nerikiri paste", baseGrams: 22, role: undefined },
-    { name: "Purple nerikiri paste", baseGrams: 3, role: undefined },
-    { name: "Yellow nerikiri paste", baseGrams: 1, role: undefined },
-    { name: "Green nerikiri paste", baseGrams: 2, role: undefined },
-    { name: "Inner filling paste", baseGrams: 13, role: undefined }
-  ]
-};
-
-const EMPTY_BASE_DOUGH_TEMPLATE = {
-  originalId: "",
-  name: "",
-  description: "",
-  yieldGrams: 330,
-  baseDoughRecipeId: "",
-  hydrationTargetIngredientId: "water",
-  ingredients: [
-    { name: "White bean paste", baseGrams: 300, role: undefined },
-    { name: "Shiratama flour", baseGrams: 10, role: undefined },
-    { name: "Water", baseGrams: 20, role: "hydration-target" },
-    { name: "Granulated sugar", baseGrams: 20, role: undefined }
-  ]
-};
-
-const form = document.querySelector("#calculator-form");
-const recipeForm = document.querySelector("#recipe-form");
-const resultsRoot = document.querySelector("#results");
-const heroMetricsRoot = document.querySelector("#hero-metrics");
-const loadExampleButton = document.querySelector("#load-example");
-const recipeSelect = document.querySelector("#recipeId");
-const baseDoughSelect = document.querySelector("#baseDoughRecipeId");
-const baseDoughField = document.querySelector("#base-dough-field");
-const exactFields = document.querySelector("#exact-fields");
-const batchFields = document.querySelector("#batch-fields");
-const liquidFields = document.querySelector("#liquid-fields");
-const recipeLibraryRoot = document.querySelector("#recipe-library");
-const recipeLibraryHeading = document.querySelector("#recipe-library-heading");
-const ingredientEditorRoot = document.querySelector("#ingredient-editor");
-const recipeFormMessage = document.querySelector("#recipe-form-message");
-const newRecipeButton = document.querySelector("#new-recipe");
-const addIngredientButton = document.querySelector("#add-ingredient");
-const duplicateRecipeButton = document.querySelector("#duplicate-recipe");
-const studioEditorHeading = document.querySelector("#studio-editor-heading");
-const studioBaseDoughSelect = document.querySelector("#studio-baseDoughRecipeId");
-const studioBaseDoughField = document.querySelector("#studio-base-dough-field");
-const viewTabs = Array.from(document.querySelectorAll("[data-view]"));
-const viewPanels = Array.from(document.querySelectorAll("[data-view-panel]"));
-const libraryTypeTabs = Array.from(document.querySelectorAll("[data-library-type]"));
-
-const formatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2
-});
+const PLAN_STORAGE_KEY = "nerikiri-plan-v1";
+const LOSS_OPTIONS = [0, 5, 10, 15];
 
 let recipes = loadRecipes();
-let baseDoughRecipes = loadBaseDoughRecipes();
-let appView = "calculator";
-let studioLibraryType = "design";
-let studioState = createBlankStudioState();
+let baseDoughs = loadBaseDoughRecipes();
 
-function getStudioTemplate(libraryType = studioLibraryType) {
-  return libraryType === "base-dough" ? EMPTY_BASE_DOUGH_TEMPLATE : EMPTY_RECIPE_TEMPLATE;
-}
+const plan = {
+  view: "plan",
+  recipeId: recipes[0]?.id ?? "",
+  baseId: "",
+  pieces: 10,
+  loss: 10,
+  round: 0,
+  coloring: "powder",
+  liquid: 1.2,
+  moreOpen: false,
+  matrixOpen: false,
+  done: {},
+  ...loadPlanPrefs()
+};
 
-function createBlankStudioState(libraryType = studioLibraryType) {
-  const template = getStudioTemplate(libraryType);
+const studio = {
+  lib: "design",
+  selectedId: null,
+  draft: null,
+  dirty: false,
+  saved: false,
+  confirmDelete: false
+};
 
-  return {
-    ...template,
-    ingredients: template.ingredients.map((ingredient) => ({ ...ingredient }))
-  };
-}
-
-function formatGrams(value) {
-  return `${formatter.format(value)} g`;
-}
-
-function formatPercent(value) {
-  return `${formatter.format(value)}%`;
-}
-
-function escapeHtml(value) {
-  return String(value).replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
-      })[character] ?? character
-  );
-}
-
-function getRecipeById(recipeId) {
-  return recipes.find((recipe) => recipe.id === recipeId) ?? recipes[0];
-}
-
-function getBaseDoughRecipe(baseDoughRecipeId) {
-  return baseDoughRecipes.find((recipe) => recipe.id === baseDoughRecipeId) ?? null;
-}
-
-function getStudioRecipes() {
-  return studioLibraryType === "base-dough" ? baseDoughRecipes : recipes;
-}
-
-function getStudioCollectionLabel() {
-  return studioLibraryType === "base-dough" ? "base dough recipe" : "design recipe";
-}
-
-function getStudioCollectionHeading() {
-  return studioLibraryType === "base-dough" ? "Saved base dough recipes" : "Saved design recipes";
-}
-
-function syncStudioChrome() {
-  const isBaseDoughLibrary = studioLibraryType === "base-dough";
-
-  recipeLibraryHeading.textContent = getStudioCollectionHeading();
-  studioEditorHeading.textContent = isBaseDoughLibrary
-    ? "Create or edit a base dough recipe"
-    : "Create or edit a design recipe";
-  newRecipeButton.textContent = isBaseDoughLibrary ? "New Base Dough" : "New Design Recipe";
-  duplicateRecipeButton.textContent = isBaseDoughLibrary
-    ? "Duplicate Base Dough"
-    : "Duplicate Recipe";
-  studioBaseDoughField.classList.toggle("hidden", isBaseDoughLibrary);
-
-  libraryTypeTabs.forEach((button) => {
-    button.classList.toggle("active", button.dataset.libraryType === studioLibraryType);
-  });
-}
-
-function applyStudioStateToForm() {
-  recipeForm.elements.name.value = studioState.name;
-  recipeForm.elements.description.value = studioState.description;
-  recipeForm.elements.yieldGrams.value = studioState.yieldGrams;
-  studioBaseDoughSelect.value = studioState.baseDoughRecipeId || "";
-  syncStudioChrome();
-  renderRecipeLibrary();
-  renderIngredientEditor();
-}
-
-function getSelectedValue(name) {
-  return form.querySelector(`input[name="${name}"]:checked`)?.value;
-}
-
-function setRadioValue(name, value) {
-  const input = document.querySelector(`input[name="${name}"][value="${value}"]`);
-
-  if (input) {
-    input.checked = true;
+function loadPlanPrefs() {
+  try {
+    const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
+    if (!raw) return {};
+    const saved = JSON.parse(raw);
+    const allowed = ["view", "recipeId", "baseId", "pieces", "loss", "round", "coloring", "liquid"];
+    return Object.fromEntries(Object.entries(saved).filter(([key]) => allowed.includes(key)));
+  } catch {
+    return {};
   }
 }
 
-function setActiveView(nextView) {
-  appView = nextView;
-  viewTabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.view === nextView);
+function savePlanPrefs() {
+  try {
+    const { view, recipeId, baseId, pieces, loss, round, coloring, liquid } = plan;
+    window.localStorage.setItem(
+      PLAN_STORAGE_KEY,
+      JSON.stringify({ view, recipeId, baseId, pieces, loss, round, coloring, liquid })
+    );
+  } catch {
+    // Private mode or storage blocked: the app still works for this visit.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+// One decimal place: what a kitchen scale shows.
+function n1(value) {
+  const rounded = Math.round((Number(value) || 0) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+const grams = (value) => `${n1(value)} g`;
+
+// "English 日本語" — the one bilingual pattern used everywhere.
+function bi(item, jpClass = "jp") {
+  const name = escapeHtml(item?.name ?? "");
+  const jp = item?.jp ? ` <span class="${jpClass}">${escapeHtml(item.jp)}</span>` : "";
+  return `${name}${jp}`;
+}
+
+function biText(item) {
+  return item?.jp ? `${item.name} ${item.jp}` : String(item?.name ?? "");
+}
+
+function isWhite(ingredient) {
+  return /white/i.test(ingredient?.name ?? "") || ingredient?.jp === "白";
+}
+
+function swatchFor(ingredient) {
+  if (ingredient?.swatch) return ingredient.swatch;
+  if (ingredient?.type === "filling") return COLOR_SWATCHES.filling;
+  if (ingredient?.colorLabel && COLOR_SWATCHES[ingredient.colorLabel]) return COLOR_SWATCHES[ingredient.colorLabel];
+  return COLOR_SWATCHES.white;
+}
+
+function getRecipe(id) {
+  return recipes.find((recipe) => recipe.id === id) ?? recipes[0] ?? null;
+}
+
+function getBase(id) {
+  return baseDoughs.find((base) => base.id === id) ?? null;
+}
+
+function activeBase(recipe) {
+  if (!recipe?.baseDoughRecipeId) return null;
+  return getBase(plan.baseId) ?? getBase(recipe.baseDoughRecipeId) ?? baseDoughs[0] ?? null;
+}
+
+function sumGrams(list, key = "baseGrams") {
+  return list.reduce((total, item) => total + (Number(item[key]) || 0), 0);
+}
+
+function doughParts(recipe) {
+  return (recipe?.ingredients ?? []).filter((ingredient) => ingredient.type !== "filling");
+}
+
+function barHtml(parts, extraClass = "") {
+  const total = sumGrams(parts);
+  const segments = parts
+    .map((part) => {
+      const width = total > 0 ? ((Number(part.baseGrams) || 0) / total) * 100 : 0;
+      return `<span style="width:${width}%;background:${escapeHtml(swatchFor(part))}"></span>`;
+    })
+    .join("");
+  return `<span class="dough-bar ${extraClass}" aria-hidden="true">${segments}</span>`;
+}
+
+const ICON_OK =
+  '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M7.5 12.5l3 3 6-6.5"></path></svg>';
+const ICON_WARN =
+  '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4.5"></path><path d="M12 17.5v.01"></path></svg>';
+const ICON_CHEVRON =
+  '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"></path></svg>';
+const ICON_TRASH =
+  '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg>';
+const ICON_PLUS =
+  '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>';
+
+// ---------------------------------------------------------------------------
+// Calculator: numbers
+// ---------------------------------------------------------------------------
+
+function computePlan() {
+  const recipe = getRecipe(plan.recipeId);
+  if (!recipe) return null;
+
+  const pieces = Math.max(1, Math.round(Number(plan.pieces) || 1));
+  const base = activeBase(recipe);
+  const settings = {
+    mode: "exact",
+    processLossPct: plan.loss,
+    roundToIncrement: plan.round > 0 ? plan.round : undefined,
+    coloringMode: plan.coloring,
+    liquidColoringAmount: plan.coloring === "liquid" ? plan.liquid : 0
+  };
+  const result = calculateRecipePlan({
+    recipe,
+    targetOutputGrams: pieces * recipe.yieldGrams,
+    settings
   });
-  viewPanels.forEach((panel) => {
-    panel.classList.toggle("hidden", panel.dataset.viewPanel !== nextView);
+  const split = base ? calculateColorSplit({ plan: result, baseDoughRecipe: base }) : null;
+
+  return { recipe, base, pieces, result, split };
+}
+
+// ---------------------------------------------------------------------------
+// Calculator: rendering
+// ---------------------------------------------------------------------------
+
+function renderRecipeCards() {
+  $("#recipe-cards").innerHTML = recipes
+    .map((recipe) => {
+      const parts = doughParts(recipe);
+      const summary = (recipe.ingredients ?? [])
+        .map((ing) => `${n1(ing.baseGrams)} ${escapeHtml(String(ing.name).toLowerCase())}${ing.jp ? ` ${escapeHtml(ing.jp)}` : ""}`)
+        .join(" · ");
+      return `<button type="button" class="recipe-card" data-set="recipeId" data-value="${escapeHtml(recipe.id)}">
+        <span class="card-top"><span class="card-name">${bi(recipe)}</span><span class="card-meta num">${grams(recipe.yieldGrams)} / piece</span></span>
+        ${parts.length ? barHtml(parts) : ""}
+        <span class="card-summary">${summary}</span>
+      </button>`;
+    })
+    .join("");
+
+  $$('select[data-bind="recipeId"]').forEach((select) => {
+    select.innerHTML = recipes
+      .map((recipe) => `<option value="${escapeHtml(recipe.id)}">${escapeHtml(biText(recipe))} — ${n1(recipe.yieldGrams)} g</option>`)
+      .join("");
   });
 }
 
-function populateCalculatorSelects() {
-  const currentRecipeValue = recipeSelect.value;
-  const currentBaseDoughValue = baseDoughSelect.value;
-  const currentStudioBaseDoughValue = studioBaseDoughSelect.value;
-
-  recipeSelect.innerHTML = recipes
-    .map((recipe) => `<option value="${recipe.id}">${escapeHtml(recipe.name)}</option>`)
+function optionsHtml(suffix) {
+  const baseOptions = baseDoughs
+    .map((base) => `<option value="${escapeHtml(base.id)}">${escapeHtml(biText(base))}</option>`)
     .join("");
+  return `
+    <label class="field-label" data-only-base>Base dough
+      <select class="fld" data-bind="baseId" id="base-${suffix}">${baseOptions}</select>
+      <span class="hint" data-out="baseNote"></span>
+    </label>
+    <div class="field-label">
+      <span id="round-${suffix}">Round weigh-outs up to</span>
+      <div class="chips three" role="group" aria-labelledby="round-${suffix}">
+        <button type="button" class="chip-btn" data-set="round" data-value="0">Exact</button>
+        <button type="button" class="chip-btn" data-set="round" data-value="0.5">0.5 g</button>
+        <button type="button" class="chip-btn" data-set="round" data-value="1">1 g</button>
+      </div>
+      <span class="hint">Always rounds up, so a portion is never lighter than it should be.</span>
+    </div>
+    <div class="field-label">
+      <span id="color-${suffix}">Coloring</span>
+      <div class="chips two" role="group" aria-labelledby="color-${suffix}">
+        <button type="button" class="chip-btn" data-set="coloring" data-value="powder">Powder</button>
+        <button type="button" class="chip-btn" data-set="coloring" data-value="liquid">Liquid</button>
+      </div>
+      <label class="inline-field" data-only-liquid>Liquid coloring total (g)
+        <input class="fld num" type="number" inputmode="decimal" min="0" step="0.1" data-bind="liquid" />
+      </label>
+      <span class="hint" data-out="coloringNote"></span>
+    </div>`;
+}
 
-  baseDoughSelect.innerHTML = baseDoughRecipes
-    .map((recipe) => `<option value="${recipe.id}">${escapeHtml(recipe.name)}</option>`)
-    .join("");
+function renderOptions() {
+  $("#options-wide").innerHTML = optionsHtml("wide");
+  $("#options-phone").innerHTML = optionsHtml("phone");
+}
 
-  studioBaseDoughSelect.innerHTML = [
-    `<option value="">No base dough default</option>`,
-    ...baseDoughRecipes.map(
-      (recipe) => `<option value="${recipe.id}">${escapeHtml(recipe.name)}</option>`
+function stepHtml({ num, label, sub, body, foot = "" }) {
+  return `<section class="step">
+    <div class="step-head">
+      <span class="step-num" aria-hidden="true">${num}</span>
+      <div>
+        <h2 class="step-title">${bi(label)}</h2>
+        ${sub ? `<p class="step-sub">${sub}</p>` : ""}
+      </div>
+    </div>
+    ${body}
+    ${foot}
+  </section>`;
+}
+
+function rowHtml({ key, item, detail = "", warn = "", value, swatch = "" }) {
+  const checked = plan.done[key] ? " checked" : "";
+  return `<label class="row">
+    <input type="checkbox" class="tick" data-done="${escapeHtml(key)}"${checked} />
+    <span class="row-main">
+      ${swatch ? `<span class="dot" style="background:${escapeHtml(swatch)}" aria-hidden="true"></span>` : ""}
+      <span>
+        <span class="row-name">${bi(item)}</span>
+        ${detail ? `<span class="row-detail">${detail}</span>` : ""}
+        ${warn ? `<span class="row-warn">${warn}</span>` : ""}
+      </span>
+    </span>
+    <span class="grams">${value}</span>
+  </label>`;
+}
+
+function renderPlan() {
+  const computed = computePlan();
+  if (!computed) {
+    $("#steps").innerHTML = `<div class="step"><p>Create a recipe in Recipe Studio to start.</p></div>`;
+    return;
+  }
+
+  const { recipe, base, pieces, result, split } = computed;
+  const lossPct = result.settings.processLossPct;
+  const fillingIngredients = (result.recipe.ingredients ?? []).filter((ing) => ing.type === "filling");
+  const doughPerPiece = recipe.yieldGrams - sumGrams(fillingIngredients);
+  const fillingPerPiece = sumGrams(fillingIngredients);
+  const finishedDough = pieces * doughPerPiece;
+  const keyPrefix = `${recipe.id}:`;
+
+  setOut("piecesLine", `${pieces} × ${n1(recipe.yieldGrams)} g = ${grams(pieces * recipe.yieldGrams)} of finished sweets`);
+  setOut("titleHtml", bi(recipe), true);
+  setOut(
+    "moreSummary",
+    `${plan.coloring === "liquid" ? "Liquid color" : "Powder color"}${plan.round ? ` · round up to ${n1(plan.round)} g` : ""}`
+  );
+  const noCookLoss = base && checkRecipeConsistency({ baseDoughRecipe: base }).length > 0;
+  setOut(
+    "baseNote",
+    base
+      ? noCookLoss
+        ? "Yield not measured yet: assumes nothing cooks off. Weigh a cooked batch and enter it in Recipe Studio."
+        : `${n1(base.yieldGrams)} g cooked from ${n1(sumGrams(base.ingredients))} g raw.`
+      : ""
+  );
+  $$('[data-out="baseNote"]').forEach((el) => el.classList.toggle("note-warn", Boolean(noCookLoss)));
+  setOut(
+    "coloringNote",
+    plan.coloring === "liquid"
+      ? "Dissolve it into the water before mixing. The water weigh-out drops by the same amount."
+      : "Powder does not change the water."
+  );
+  $$("[data-only-base]").forEach((el) => (el.hidden = !base));
+  $$("[data-only-liquid]").forEach((el) => (el.hidden = plan.coloring !== "liquid"));
+
+  // Recipes without a linked base dough: one weigh-out list, with hydration adjustment.
+  if (!split) {
+    const rows = result.ingredients
+      .map((ing, index) =>
+        rowHtml({
+          key: `${keyPrefix}ing-${index}`,
+          item: ing,
+          detail: ing.isHydrationTarget && result.hydration.applied ? `Less ${grams(result.hydration.liquidColoringContribution)} for liquid coloring` : "",
+          value: grams(ing.toAddRoundedGrams)
+        })
+      )
+      .join("");
+    $("#summary").innerHTML = statHtml("Weigh out", grams(result.requiredPreLossGrams), lossPct ? `incl. ${lossPct}% extra` : "total batch");
+    $("#steps").innerHTML = stepHtml({ num: 1, label: STEP_LABELS.weigh, sub: "Weigh, mix and cook together.", body: rows });
+    $("#totals").innerHTML = "";
+    $("#minibatch").innerHTML = "";
+    return;
+  }
+
+  const coloredIngredients = (result.recipe.ingredients ?? []).filter((ing) => ing.type === "colored-dough");
+  const cooked = split.totalColoredDough;
+  const rawExact = sumGrams(split.scaledBaseIngredients, "scaledGrams");
+  const rawSum = sumGrams(base.ingredients);
+  const liquid = split.totalLiquidColoringAmount;
+  const fillingTotal = pieces * fillingPerPiece;
+
+  $("#summary").innerHTML = [
+    statHtml("Cook this much base dough", grams(rawExact), "raw, in one pot", "Cook", "raw dough"),
+    statHtml(
+      "Cooked dough you need",
+      grams(cooked),
+      lossPct ? `${grams(finishedDough)} + ${lossPct}% handling` : `for ${pieces} pieces`,
+      "Need",
+      lossPct ? `incl. ${lossPct}% extra` : "cooked"
+    ),
+    statHtml(
+      "Filling",
+      fillingPerPiece ? grams(fillingTotal) : "None",
+      fillingPerPiece ? `${n1(fillingPerPiece)} g × ${pieces}, weigh separately` : "this design has no filling",
+      "Filling",
+      fillingPerPiece ? "separate" : "not used"
     )
   ].join("");
 
-  if (recipes.some((recipe) => recipe.id === currentRecipeValue)) {
-    recipeSelect.value = currentRecipeValue;
-  } else {
-    recipeSelect.value = recipes[0]?.id ?? "";
-  }
+  const baseRows = split.scaledBaseIngredients
+    .map((ing, index) =>
+      rowHtml({
+        key: `${keyPrefix}base-${base.id}-${index}`,
+        item: ing,
+        detail: ing.isHydrationTarget && liquid > 0 ? `Less ${grams(liquid)} for liquid coloring` : "",
+        value: grams(ing.scaledRoundedGrams)
+      })
+    )
+    .join("");
 
-  if (baseDoughRecipes.some((recipe) => recipe.id === currentBaseDoughValue)) {
-    baseDoughSelect.value = currentBaseDoughValue;
-  } else {
-    baseDoughSelect.value = "";
-  }
-
-  if (
-    currentStudioBaseDoughValue === "" ||
-    baseDoughRecipes.some((recipe) => recipe.id === currentStudioBaseDoughValue)
-  ) {
-    studioBaseDoughSelect.value = currentStudioBaseDoughValue;
-  } else {
-    studioBaseDoughSelect.value = "";
-  }
-}
-
-function applyCalculatorState(state) {
-  recipeSelect.value = state.recipeId;
-  baseDoughSelect.value = state.baseDoughRecipeId;
-  form.elements.pieceCount.value = state.pieceCount;
-  form.elements.pieceWeightGrams.value = state.pieceWeightGrams;
-  form.elements.batchWeightGrams.value = state.batchWeightGrams;
-  form.elements.processLossPct.value = state.processLossPct;
-  form.elements.roundToIncrement.value = state.roundToIncrement;
-  form.elements.liquidColoringAmount.value = state.liquidColoringAmount;
-  setRadioValue("mode", state.mode);
-  setRadioValue("coloringMode", state.coloringMode);
-  syncCalculatorVisibility();
-}
-
-function readCalculatorState() {
-  const recipe = getRecipeById(recipeSelect.value);
-
-  return {
-    recipeId: recipeSelect.value,
-    baseDoughRecipeId: baseDoughSelect.value,
-    mode: getSelectedValue("mode") ?? "exact",
-    pieceCount: form.elements.pieceCount.value,
-    pieceWeightGrams: recipe?.yieldGrams ?? form.elements.pieceWeightGrams.value,
-    batchWeightGrams: form.elements.batchWeightGrams.value,
-    processLossPct: form.elements.processLossPct.value,
-    roundToIncrement: form.elements.roundToIncrement.value,
-    coloringMode: getSelectedValue("coloringMode") ?? "powder",
-    liquidColoringAmount: form.elements.liquidColoringAmount.value
-  };
-}
-
-function syncRecipeDrivenFields({ syncBaseDough = false } = {}) {
-  const recipe = getRecipeById(recipeSelect.value);
-
-  if (!recipe) {
-    return;
-  }
-
-  if (recipe.baseDoughRecipeId) {
-    if (syncBaseDough || !getBaseDoughRecipe(baseDoughSelect.value)) {
-      baseDoughSelect.value = recipe.baseDoughRecipeId;
-    }
-  }
-
-  form.elements.pieceWeightGrams.value = recipe.yieldGrams;
-
-  if (getSelectedValue("mode") === "exact") {
-    const pieceCount = Number.parseFloat(form.elements.pieceCount.value) || 0;
-    form.elements.batchWeightGrams.value = pieceCount * recipe.yieldGrams;
-  }
-}
-
-function syncCalculatorVisibility() {
-  const mode = getSelectedValue("mode");
-  const coloringMode = getSelectedValue("coloringMode");
-  const recipe = getRecipeById(recipeSelect.value);
-
-  exactFields.classList.toggle("hidden", mode !== "exact");
-  batchFields.classList.toggle("hidden", mode !== "batch");
-  liquidFields.classList.toggle("hidden", coloringMode !== "liquid");
-  baseDoughField.classList.toggle("hidden", !recipe?.baseDoughRecipeId);
-  baseDoughSelect.disabled = !recipe?.baseDoughRecipeId;
-}
-
-function renderHero(plan, inputState, colorSplit) {
-  const recipe = plan.recipe;
-  const modeLabel = inputState.mode === "batch" ? "Batch grams" : "Exact pieces";
-
-  const thirdMetric = colorSplit
-    ? `<div class="metric-card">
-        <span>Total base dough</span>
-        <strong>${formatGrams(colorSplit.totalColoredDough)}</strong>
-      </div>`
-    : `<div class="metric-card">
-        <span>Final water to add</span>
-        <strong>${formatGrams(plan.hydration.finalWaterToAddRounded)}</strong>
-      </div>`;
-
-  heroMetricsRoot.innerHTML = `
-    <div class="metric-card">
-      <span>Recipe profile</span>
-      <strong>${escapeHtml(recipe.name)}</strong>
-    </div>
-    <div class="metric-card">
-      <span>Planning mode</span>
-      <strong>${modeLabel}</strong>
-    </div>
-    ${thirdMetric}
-  `;
-}
-
-function renderSummary(plan, inputState) {
-  const pieceLabel =
-    inputState.mode === "exact"
-      ? `${inputState.pieceCount} pieces @ ${formatGrams(plan.recipe.yieldGrams)} each`
-      : "Batch weight target";
-
-  return `
-    <article class="result-card">
-      <h3>Batch summary</h3>
-      <div class="stat-row">
-        <span class="stat-label">Target output</span>
-        <span class="stat-value">${formatGrams(plan.targetOutputGrams)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Scaled pre-loss dough</span>
-        <span class="stat-value">${formatGrams(plan.requiredPreLossGrams)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Scale factor</span>
-        <span class="stat-value">${plan.scaleFactor.toFixed(3)}x</span>
-      </div>
-    </article>
-
-    <article class="result-card">
-      <h3>Production detail</h3>
-      <div class="stat-row">
-        <span class="stat-label">Plan type</span>
-        <span class="stat-value">${pieceLabel}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Process loss</span>
-        <span class="stat-value">${formatPercent(plan.settings.processLossPct)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Coloring mode</span>
-        <span class="stat-value emphasis">${plan.settings.coloringMode}</span>
-      </div>
-    </article>
-  `;
-}
-
-function renderHydration(plan, colorSplit) {
-  const hydration = plan.hydration;
-  if (!hydration.hasTargetIngredient) {
-    const liquidApplied =
-      plan.settings.coloringMode === "liquid" &&
-      colorSplit?.totalLiquidColoringAmount > 0;
-    const chipMarkup = liquidApplied
-      ? `<span class="chip">Liquid coloring is distributed across the base dough water in the color split below.</span>`
-      : `<span class="chip">Coloring settings do not change this recipe’s math.</span>`;
-    return `
-      <article class="result-card">
-        <h3>Hydration adjustment</h3>
-        <p>
-          This recipe is modeled as a finished colored flower recipe, so it
-          does not include a hydration-adjustable water ingredient.
-        </p>
-        <div class="chip-row">${chipMarkup}</div>
-      </article>
-    `;
-  }
-
-  const isLiquidMode = plan.settings.coloringMode === "liquid";
-  const appliedMarkup = isLiquidMode
-    ? `
-        <div class="hydration-grid">
-          <div class="hydration-box">
-            <span>Scaled base water</span>
-            <strong>${formatGrams(hydration.scaledBaseWater)}</strong>
-          </div>
-          <div class="hydration-box accent">
-            <span>Liquid coloring counted as moisture</span>
-            <strong>${formatGrams(hydration.liquidColoringContribution)}</strong>
-          </div>
-          <div class="hydration-box matcha">
-            <span>Final water to add</span>
-            <strong>${formatGrams(hydration.finalWaterToAddRounded)}</strong>
-          </div>
-        </div>
-      `
-    : `
-        <div class="chip-row">
-          <span class="chip">Base water target stays unchanged in powder mode.</span>
-        </div>
-      `;
-
-  const warningMarkup = hydration.fullyReplacedByColoring
-    ? `
-        <div class="chip-row warning">
-          <span class="chip warning">
-            Liquid coloring fully covers the water target, so added water is clamped to zero.
-          </span>
-        </div>
-      `
-    : "";
-
-  return `
-    <article class="result-card">
-      <h3>Hydration adjustment</h3>
-      <p>
-        The engine keeps hydration logic generic by adjusting the recipe’s
-        designated water ingredient after scaling and loss handling.
-      </p>
-      ${appliedMarkup}
-      ${warningMarkup}
-    </article>
-  `;
-}
-
-function renderInsight(plan) {
-  const hydration = plan.hydration;
-  const recipe = plan.recipe;
-  if (!hydration.hasTargetIngredient) {
-    return `
-      <div class="insight-banner result-full">
-        <strong>${escapeHtml(recipe.description)}</strong>
-        This recipe scales finished colored portions directly, including the inner filling.
-      </div>
-    `;
-  }
-
-  const adjustmentCopy =
-    plan.settings.coloringMode === "liquid"
-      ? hydration.applied
-        ? `Liquid coloring is replacing ${formatGrams(
-            hydration.liquidColoringContribution
-          )} of added water for this run.`
-        : "Liquid mode is enabled, but with 0 g entered the base water stays unchanged."
-      : "Powder coloring leaves the scaled water amount untouched for this run.";
-
-  return `
-    <div class="insight-banner result-full">
-      <strong>${escapeHtml(recipe.description)}</strong>
-      ${adjustmentCopy}
-    </div>
-  `;
-}
-
-function renderIngredientTable(plan) {
-  const rows = plan.ingredients
-    .map((ingredient) => {
-      const ingredientNote =
-        ingredient.isHydrationTarget && plan.hydration.applied ? "Adjusted" : "Scaled";
-
-      return `
-        <tr>
-          <td>${escapeHtml(ingredient.name)}</td>
-          <td>${formatGrams(ingredient.baseGrams)}</td>
-          <td>${formatGrams(ingredient.scaledGrams)}</td>
-          <td>${formatGrams(ingredient.toAddRoundedGrams)}</td>
-          <td>${ingredientNote}</td>
-        </tr>
-      `;
+  const portionRows = split.colorPortions
+    .map((portion, index) => {
+      const ing = coloredIngredients[index] ?? portion;
+      const action = portion.colorLabel ? `Tint ${escapeHtml(String(ing.name).toLowerCase())}` : "Keep white";
+      return rowHtml({
+        key: `${keyPrefix}portion-${index}`,
+        item: ing,
+        detail: `${action} · ${n1(ing.baseGrams)} g × ${pieces}${lossPct ? ` + ${lossPct}%` : ""}`,
+        value: grams(portion.totalRoundedGrams),
+        swatch: swatchFor(ing)
+      });
     })
     .join("");
 
-  return `
-    <div class="table-wrap result-full">
-      <div class="table-header">
-        <div>
-          <h3>Ingredient breakdown</h3>
-          <p class="table-subtitle">
-            Water stays transparent: the table shows the scaled target and the final weigh-out.
-          </p>
-        </div>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Ingredient</th>
-            <th>Base recipe</th>
-            <th>Scaled target</th>
-            <th>Weigh out</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  `;
-}
-
-function renderColorSplit(colorSplit) {
-  if (!colorSplit) return "";
-
-  const baseIngredients = colorSplit.baseDoughRecipe.ingredients;
-  const portions = colorSplit.colorPortions;
-
-  // Build the cell matrix first so column/row/grand totals all derive from the same numbers.
-  const cellMatrix = baseIngredients.map((baseIngredient) =>
-    portions.map((portion) => {
-      const match = portion.baseDoughIngredients.find((i) => i.id === baseIngredient.id);
-      return match?.scaledRoundedGrams ?? 0;
+  const steps = [
+    stepHtml({
+      num: 1,
+      label: STEP_LABELS.base,
+      sub: `${bi(base)} — weigh, mix and cook together.`,
+      body: baseRows,
+      foot: `<div class="step-foot num"><span>Cooks down to about ${grams(cooked)}</span><strong>${grams(rawExact)} raw</strong></div>`
+    }),
+    stepHtml({
+      num: 2,
+      label: STEP_LABELS.divide,
+      sub: "Weigh each portion off the cooked batch, then tint.",
+      body: barHtml(coloredIngredients, "big") + portionRows
     })
-  );
-  const columnTotals = portions.map((_, colIdx) =>
-    cellMatrix.reduce((sum, row) => sum + row[colIdx], 0)
-  );
-  const grandTotal = columnTotals.reduce((sum, v) => sum + v, 0);
+  ];
 
-  const liquidColoringApplied = colorSplit.totalLiquidColoringAmount > 0;
+  let nextNum = 3;
+  if (split.fillingPortions.length) {
+    const fillingRows = split.fillingPortions
+      .map((portion, index) => {
+        const ing = fillingIngredients[index] ?? portion;
+        return rowHtml({
+          key: `${keyPrefix}filling-${index}`,
+          item: ing,
+          detail: `${n1(ing.baseGrams)} g × ${pieces}, rolled into balls. Not part of the dough.`,
+          value: grams(portion.totalRoundedGrams),
+          swatch: swatchFor(ing)
+        });
+      })
+      .join("");
+    steps.push(stepHtml({ num: nextNum++, label: STEP_LABELS.filling, body: fillingRows }));
+  }
 
-  const headerCells = portions
-    .map((portion, colIdx) => {
-      const colorNote = portion.colorLabel
-        ? `<span class="portion-color-label">+ ${portion.colorLabel}</span>`
-        : `<span class="portion-color-label">uncolored</span>`;
-      return `<th class="portion-col">
-        <span class="portion-col-name">${escapeHtml(portion.name)}</span>
-        <span class="portion-col-grams">${formatGrams(columnTotals[colIdx])}</span>
-        ${colorNote}
-      </th>`;
-    })
+  const chips = (result.recipe.ingredients ?? [])
+    .map(
+      (ing) =>
+        `<span class="piece-chip num"><span class="dot small" style="background:${escapeHtml(swatchFor(ing))}" aria-hidden="true"></span>${n1(ing.baseGrams)} g ${escapeHtml(String(ing.name).toLowerCase())}${ing.jp ? ` ${escapeHtml(ing.jp)}` : ""}</span>`
+    )
     .join("");
+  steps.push(
+    stepHtml({
+      num: nextNum,
+      label: STEP_LABELS.shape,
+      sub: `Per piece: ${grams(recipe.yieldGrams)}`,
+      body: `<div class="piece-chips">${chips}</div>`
+    })
+  );
+  $("#steps").innerHTML = steps.join("");
 
-  const bodyRows = baseIngredients
-    .map((baseIngredient, rowIdx) => {
-      const isWater = baseIngredient.role === "hydration-target";
-      const rowTotal = cellMatrix[rowIdx].reduce((sum, v) => sum + v, 0);
+  // Totals check
+  const warnings = split.warnings ?? [];
+  const lines = [
+    `Pieces: ${pieces} × ${n1(doughPerPiece)} g dough = ${grams(finishedDough)}${lossPct ? `, + ${lossPct}% handling = ${grams(cooked)}` : ""}`,
+    `Portions: ${split.colorPortions.map((p) => n1(p.totalGrams)).join(" + ")} = ${grams(cooked)}`,
+    `Base: ${grams(rawExact)} raw cooks down to ${grams(cooked)} (${n1(base.yieldGrams)} g cooked per ${n1(rawSum)} g raw)`
+  ];
+  const warn = warnings.length > 0;
+  $("#totals").innerHTML = `<section class="check-box ${warn ? "warn" : "ok"}" aria-label="Totals check">
+    ${warn ? ICON_WARN : ICON_OK}
+    <div>
+      <div class="check-title">${warn ? "You may come up short" : "Totals add up"}</div>
+      ${warnings.map((w) => `<div class="check-line">${escapeHtml(w)}</div>`).join("")}
+      ${lines.map((line) => `<div class="check-line">${escapeHtml(line)}</div>`).join("")}
+    </div>
+  </section>`;
 
-      const cells = portions
-        .map((portion, colIdx) => {
-          const grams = cellMatrix[rowIdx][colIdx];
-          return `<td class="num-cell${isWater && portion.colorLabel ? " water-cell" : ""}">${formatGrams(grams)}</td>`;
+  // Per-color mini batches
+  const head = split.colorPortions
+    .map((portion, index) => `<th scope="col">${bi(coloredIngredients[index] ?? portion)}</th>`)
+    .join("");
+  const body = base.ingredients
+    .map((baseIng) => {
+      const cells = split.colorPortions
+        .map((portion) => {
+          const match = portion.baseDoughIngredients.find((i) => i.id === baseIng.id);
+          return `<td>${grams(match?.scaledRoundedGrams ?? 0)}</td>`;
         })
         .join("");
-
-      const waterNote =
-        isWater && liquidColoringApplied
-          ? ` <span class="chip" style="font-size:0.7em;padding:1px 6px;vertical-align:middle">−${formatGrams(colorSplit.totalLiquidColoringAmount)} coloring</span>`
-          : "";
-
-      return `<tr class="${isWater ? "water-row" : ""}">
-        <td class="ingredient-label">${escapeHtml(baseIngredient.name)}${waterNote}</td>
-        ${cells}
-        <td class="num-cell total-cell">${formatGrams(rowTotal)}</td>
-      </tr>`;
+      return `<tr><th scope="row">${bi(baseIng)}</th>${cells}</tr>`;
     })
     .join("");
-
-  const fillingMarkup =
-    colorSplit.fillingPortions.length > 0
-      ? `<div class="chip-row split-filling">
-          ${colorSplit.fillingPortions
-            .map(
-              (f) =>
-                `<span class="chip">Filling (weigh separately): ${escapeHtml(f.name)} — ${formatGrams(f.totalRoundedGrams)}</span>`
-            )
-            .join("")}
-        </div>`
-      : "";
-
-  const liquidChip = liquidColoringApplied
-    ? `<div class="chip-row">
-        <span class="chip">Liquid coloring (${formatGrams(colorSplit.totalLiquidColoringAmount)} total) distributed proportionally across dyed portions and subtracted from each color's water.</span>
-      </div>`
-    : "";
-
-  return `
-    <article class="result-card result-full">
-      <h3>Base dough per color — ${escapeHtml(colorSplit.baseDoughRecipe.name)}</h3>
-      <p>
-        Total colored base dough: <strong>${formatGrams(colorSplit.totalColoredDough)}</strong>.
-        For liquid coloring, dissolve the drops into that color's water portion before mixing.
-      </p>
-      ${liquidChip}
-      <div class="table-wrap color-matrix-wrap">
-        <table class="color-matrix">
-          <thead>
-            <tr>
-              <th>Ingredient</th>
-              ${headerCells}
-              <th class="portion-col total-col">
-                <span class="portion-col-name">Total</span>
-                <span class="portion-col-grams">${formatGrams(grandTotal)}</span>
-                <span class="portion-color-label">all colors</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>${bodyRows}</tbody>
-        </table>
-      </div>
-      ${fillingMarkup}
-    </article>
-  `;
-}
-
-function renderCalculatorResults(plan, inputState, colorSplit) {
-  resultsRoot.innerHTML = `
-    ${renderColorSplit(colorSplit)}
-    ${renderSummary(plan, inputState)}
-    ${renderHydration(plan, colorSplit)}
-    ${renderInsight(plan)}
-    ${renderIngredientTable(plan)}
-  `;
-}
-
-function renderEmptyState(message) {
-  heroMetricsRoot.innerHTML = `
-    <div class="metric-card">
-      <span>Recipe profile</span>
-      <strong>Waiting for valid input</strong>
+  $("#minibatch").innerHTML = `<div class="disclosure">
+    <button type="button" class="disclosure-toggle" id="matrix-toggle" aria-expanded="${plan.matrixOpen}" aria-controls="matrix-panel">
+      <span>Making each color as its own mini batch?</span>${ICON_CHEVRON}
+    </button>
+    <div id="matrix-panel" class="table-wrap"${plan.matrixOpen ? "" : " hidden"}>
+      <table class="matrix"><thead><tr><th scope="col">Raw ingredient</th>${head}</tr></thead><tbody>${body}</tbody></table>
     </div>
-  `;
-
-  resultsRoot.innerHTML = `<div class="empty-state">${message}</div>`;
+  </div>`;
 }
 
-function calculateAndRender() {
-  const inputState = readCalculatorState();
-  const recipe = getRecipeById(inputState.recipeId);
-  const targetOutputGrams = deriveTargetOutputGrams(inputState);
+// Long labels on wide screens; short ones on phones, where three stats share one row.
+function statHtml(label, value, sub, shortLabel = label, shortSub = sub) {
+  const pair = (long, short) =>
+    long === short
+      ? escapeHtml(long)
+      : `<span class="long">${escapeHtml(long)}</span><span class="short">${escapeHtml(short)}</span>`;
+  return `<div class="stat"><div class="stat-label">${pair(label, shortLabel)}</div><div class="stat-value">${escapeHtml(value)}</div><div class="stat-sub">${pair(sub, shortSub)}</div></div>`;
+}
 
-  if (!recipe) {
-    renderEmptyState("Create a recipe in Recipe Studio to start calculating.");
-    return;
-  }
+function setOut(name, value, html = false) {
+  $$(`[data-out="${name}"]`).forEach((el) => {
+    if (html) el.innerHTML = value;
+    else el.textContent = value;
+  });
+}
 
-  if (targetOutputGrams <= 0) {
-    renderEmptyState(
-      "Enter a piece plan or batch weight above zero to generate the recipe report."
-    );
-    return;
-  }
+// Keep every control bound to the same key in sync (wide panel, phone bar, options sheet).
+function syncControls() {
+  const recipe = getRecipe(plan.recipeId);
+  const values = {
+    recipeId: recipe?.id ?? "",
+    pieces: plan.pieces,
+    loss: plan.loss,
+    baseId: activeBase(recipe)?.id ?? "",
+    round: plan.round,
+    coloring: plan.coloring,
+    liquid: plan.liquid
+  };
 
-  const plan = calculateRecipePlan({
-    recipe,
-    targetOutputGrams,
-    settings: inputState
+  $$("[data-bind]").forEach((el) => {
+    if (el === document.activeElement && el.tagName === "INPUT") return;
+    el.value = String(values[el.dataset.bind] ?? "");
+  });
+  $$("[data-set]").forEach((el) => {
+    el.setAttribute("aria-pressed", String(String(values[el.dataset.set]) === el.dataset.value));
   });
 
-  baseDoughField.classList.toggle("hidden", !recipe.baseDoughRecipeId);
+  document.body.dataset.view = plan.view;
+  $("#view-plan").hidden = plan.view !== "plan";
+  $("#view-studio").hidden = plan.view !== "studio";
+  $$("[data-go]").forEach((el) => {
+    if (el.dataset.go === plan.view) el.setAttribute("aria-current", "page");
+    else el.removeAttribute("aria-current");
+  });
 
-  const baseDoughId = recipe.baseDoughRecipeId
-    ? inputState.baseDoughRecipeId || recipe.baseDoughRecipeId
-    : "";
-  const baseDoughRecipe = baseDoughId ? getBaseDoughRecipe(baseDoughId) : null;
-
-  const colorSplit = calculateColorSplit({ plan, baseDoughRecipe });
-
-  renderHero(plan, inputState, colorSplit);
-  renderCalculatorResults(plan, inputState, colorSplit);
+  const moreToggle = $("#more-toggle");
+  moreToggle.setAttribute("aria-expanded", String(plan.moreOpen));
+  $("#options-wide").hidden = !plan.moreOpen;
 }
 
-function setRecipeFormMessage(message, type = "") {
-  recipeFormMessage.textContent = message;
-  recipeFormMessage.className = `form-message${type ? ` ${type}` : ""}`;
+function refreshPlan() {
+  renderPlan();
+  syncControls();
+  savePlanPrefs();
 }
 
-function loadStudioRecipe(recipe) {
-  const fallbackState = createBlankStudioState();
-
-  studioState = {
-    originalId: recipe?.id ?? "",
-    name: recipe?.name ?? "",
-    description: recipe?.description ?? "",
-    yieldGrams: recipe?.yieldGrams ?? fallbackState.yieldGrams,
-    baseDoughRecipeId: recipe?.baseDoughRecipeId ?? fallbackState.baseDoughRecipeId,
-    hydrationTargetIngredientId:
-      recipe?.hydrationTargetIngredientId ??
-      recipe?.ingredients?.find((ingredient) => ingredient.role === "hydration-target")?.id ??
-      fallbackState.hydrationTargetIngredientId,
-    ingredients:
-      recipe?.ingredients?.map((ingredient) => ({
-        ...ingredient,
-        name: ingredient.name,
-        baseGrams: ingredient.baseGrams,
-        role: ingredient.role
-      })) ?? fallbackState.ingredients
-  };
-
-  applyStudioStateToForm();
-}
-
-function renderRecipeLibrary() {
-  const studioRecipes = getStudioRecipes();
-
-  if (!studioRecipes.length) {
-    recipeLibraryRoot.innerHTML = `<div class="empty-state">No ${getStudioCollectionLabel()}s yet. Create one to start building your library.</div>`;
-    return;
+function setPlanValue(key, raw) {
+  switch (key) {
+    case "recipeId": {
+      plan.recipeId = raw;
+      plan.baseId = getRecipe(raw)?.baseDoughRecipeId ?? "";
+      break;
+    }
+    case "pieces": {
+      const value = Math.round(Number.parseFloat(raw));
+      plan.pieces = Number.isFinite(value) && value > 0 ? Math.min(value, 9999) : 1;
+      break;
+    }
+    case "loss": {
+      const value = Number.parseFloat(raw);
+      plan.loss = LOSS_OPTIONS.includes(value) ? value : 0;
+      break;
+    }
+    case "round":
+      plan.round = Number.parseFloat(raw) || 0;
+      break;
+    case "coloring":
+      plan.coloring = raw === "liquid" ? "liquid" : "powder";
+      break;
+    case "liquid":
+      plan.liquid = Math.max(0, Number.parseFloat(raw) || 0);
+      break;
+    case "baseId":
+      plan.baseId = raw;
+      break;
+    default:
+      return;
   }
+  refreshPlan();
+}
 
-  recipeLibraryRoot.innerHTML = studioRecipes
-    .map((recipe) => {
-      const active = recipe.id === studioState.originalId;
-      const hydrationTarget = recipe.ingredients.find(
-        (ingredient) => ingredient.id === recipe.hydrationTargetIngredientId
-      );
-      const summaryLabel =
-        studioLibraryType === "base-dough"
-          ? hydrationTarget?.name ?? "No water target"
-          : getBaseDoughRecipe(recipe.baseDoughRecipeId)?.name ?? "No base dough";
+// ---------------------------------------------------------------------------
+// Recipe Studio
+// ---------------------------------------------------------------------------
 
-      return `
-        <button class="library-item${active ? " active" : ""}" type="button" data-recipe-id="${recipe.id}">
-          <strong>${escapeHtml(recipe.name)}</strong>
-          <div class="library-meta">
-            <span class="chip">${formatGrams(recipe.yieldGrams)} yield</span>
-            <span class="chip">${recipe.ingredients.length} ingredients</span>
-            <span class="chip">${escapeHtml(summaryLabel)}</span>
-          </div>
-        </button>
-      `;
+function draftFromRecipe(recipe, lib) {
+  if (lib === "design") {
+    return {
+      originalId: recipe.id,
+      name: recipe.name ?? "",
+      jp: recipe.jp ?? "",
+      description: recipe.description ?? "",
+      baseDoughRecipeId: recipe.baseDoughRecipeId ?? baseDoughs[0]?.id ?? "",
+      rows: (recipe.ingredients ?? []).map((ing) => ({
+        name: ing.name ?? "",
+        jp: ing.jp ?? "",
+        g: Number(ing.baseGrams) || 0,
+        swatch: swatchFor(ing),
+        part: ing.type === "filling" ? "filling" : "dough"
+      }))
+    };
+  }
+  return {
+    originalId: recipe.id,
+    name: recipe.name ?? "",
+    jp: recipe.jp ?? "",
+    description: recipe.description ?? "",
+    yieldGrams: Number(recipe.yieldGrams) || 0,
+    rows: (recipe.ingredients ?? []).map((ing) => ({ name: ing.name ?? "", jp: ing.jp ?? "", g: Number(ing.baseGrams) || 0 }))
+  };
+}
+
+function blankDraft(lib) {
+  if (lib === "design") {
+    return {
+      originalId: "",
+      name: "",
+      jp: "",
+      description: "",
+      baseDoughRecipeId: baseDoughs[0]?.id ?? "",
+      rows: [
+        { name: "White", jp: "白", g: 20, swatch: COLOR_SWATCHES.white, part: "dough" },
+        { name: "", jp: "", g: 0, swatch: COLOR_SWATCHES.pink, part: "dough" }
+      ]
+    };
+  }
+  return {
+    originalId: "",
+    name: "",
+    jp: "",
+    description: "",
+    yieldGrams: 0,
+    rows: [
+      { name: "White bean paste", jp: "白こしあん", g: 300 },
+      { name: "Shiratama flour", jp: "白玉粉", g: 10 },
+      { name: "Water", jp: "水", g: 20 },
+      { name: "Granulated sugar", jp: "グラニュー糖", g: 20 }
+    ]
+  };
+}
+
+function studioList() {
+  return studio.lib === "design" ? recipes : baseDoughs;
+}
+
+function selectInStudio(lib, id) {
+  studio.lib = lib;
+  const item = studioList().find((x) => x.id === id) ?? null;
+  studio.selectedId = item?.id ?? null;
+  studio.draft = item ? draftFromRecipe(item, lib) : blankDraft(lib);
+  studio.dirty = false;
+  studio.saved = false;
+  studio.confirmDelete = false;
+  renderStudio();
+}
+
+function renderLibrary() {
+  const isDesign = studio.lib === "design";
+  $$("[data-lib]").forEach((el) => el.setAttribute("aria-pressed", String(el.dataset.lib === studio.lib)));
+  $("#new-recipe-label").textContent = isDesign ? "New design" : "New base dough";
+  $("#library-list").innerHTML = studioList()
+    .map((item) => {
+      const current = item.id === studio.selectedId;
+      const raw = sumGrams(item.ingredients ?? []);
+      const meta = isDesign ? `${grams(item.yieldGrams)} / piece` : `${n1(item.yieldGrams)} g from ${n1(raw)} g`;
+      const warn = !isDesign && checkRecipeConsistency({ baseDoughRecipe: item }).length > 0;
+      return `<button type="button" class="lib-item" data-pick="${escapeHtml(item.id)}" aria-current="${current}">
+        <span class="card-top"><span class="card-name">${bi(item)}</span><span class="card-meta num">${meta}</span></span>
+        ${isDesign ? barHtml(doughParts(item)) : ""}
+        ${warn ? `<span class="lib-warn">Yield not measured yet</span>` : ""}
+      </button>`;
     })
     .join("");
 }
 
-function readStudioIngredientsFromDom() {
-  const ingredientRows = Array.from(
-    ingredientEditorRoot.querySelectorAll("[data-ingredient-index]")
-  );
+function renderEditor() {
+  const d = studio.draft;
+  const isDesign = studio.lib === "design";
+  const builtIn = d.originalId && isBuiltInRecipe(d.originalId);
+  const baseOptions = baseDoughs
+    .map((base) => `<option value="${escapeHtml(base.id)}"${base.id === d.baseDoughRecipeId ? " selected" : ""}>${escapeHtml(biText(base))}</option>`)
+    .join("");
 
-  return ingredientRows.map((row, index) => ({
-    ...(studioState.ingredients[index] ?? {}),
-    name: row.querySelector('[data-field="name"]')?.value ?? "",
-    baseGrams: row.querySelector('[data-field="baseGrams"]')?.value ?? "",
-    role: row.querySelector('[data-field="hydrationTarget"]')?.checked
-      ? "hydration-target"
-      : undefined
-  }));
-}
+  const headCells = isDesign
+    ? `<span>Color</span><span>English</span><span>Japanese 日本語</span><span class="right">Grams</span><span>Part</span><span><span class="visually-hidden">Remove</span></span>`
+    : `<span>English</span><span>Japanese 日本語</span><span class="right">Grams</span><span><span class="visually-hidden">Remove</span></span>`;
 
-function syncStudioStateFromDom() {
-  studioState = {
-    ...studioState,
-    name: recipeForm.elements.name.value,
-    description: recipeForm.elements.description.value,
-    yieldGrams: recipeForm.elements.yieldGrams.value,
-    baseDoughRecipeId:
-      studioLibraryType === "design" ? studioBaseDoughSelect.value : "",
-    ingredients: readStudioIngredientsFromDom()
-  };
-}
-
-function renderIngredientEditor() {
-  const ingredientModels = studioState.ingredients.map((ingredient, index) => {
-    const ingredientId = `studio-ingredient-${index}`;
-    const hydrationChecked = ingredient.role === "hydration-target";
-
-    return `
-      <div class="ingredient-row" data-ingredient-index="${index}">
-        <div class="ingredient-row-header">
-          <h4>Ingredient ${index + 1}</h4>
-          <button class="text-button" type="button" data-remove-ingredient="${index}">
-            Remove
-          </button>
-        </div>
-        <div class="field-grid">
-          <label class="field">
-            <span>Name</span>
-            <input data-field="name" type="text" value="${escapeHtml(ingredient.name)}" placeholder="Water" />
-          </label>
-          <label class="field">
-            <span>Base grams</span>
-            <input data-field="baseGrams" type="number" min="0.01" step="0.01" value="${ingredient.baseGrams}" />
-          </label>
-        </div>
-        <label class="hydration-target-toggle" for="${ingredientId}">
-          <input
-            id="${ingredientId}"
-            data-field="hydrationTarget"
-            type="radio"
-            name="hydrationTargetIngredient"
-            ${hydrationChecked ? "checked" : ""}
-          />
-          Use this ingredient for hydration adjustment
+  $("#recipe-form").innerHTML = `
+    <div class="editor-card">
+      <div class="editor-head">
+        <h2 class="editor-title" id="editor-title"></h2>
+        <span class="status" id="editor-status" aria-live="polite"></span>
+      </div>
+      <div class="two-col">
+        <label class="field-label">Name (English)
+          <input class="fld" type="text" data-draft="name" value="${escapeHtml(d.name)}" placeholder="${isDesign ? "Camellia" : "Spring Base"}" autocomplete="off" />
+        </label>
+        <label class="field-label">Name (Japanese) 日本語名
+          <input class="fld" type="text" lang="ja" data-draft="jp" value="${escapeHtml(d.jp)}" placeholder="${isDesign ? "椿" : "春の生地"}" autocomplete="off" />
         </label>
       </div>
-    `;
-  });
+      <div class="two-col">
+        <label class="field-label">Notes
+          <textarea class="fld" rows="2" data-draft="description" placeholder="Shaping notes, tools, season">${escapeHtml(d.description)}</textarea>
+        </label>
+        ${
+          isDesign
+            ? `<label class="field-label">Base dough<select class="fld" data-draft="baseDoughRecipeId">${baseOptions}</select></label>`
+            : `<label class="field-label">Cooked yield (g), weighed after cooking
+                 <input class="fld num" type="number" inputmode="decimal" min="0" step="1" data-draft="yieldGrams" value="${escapeHtml(d.yieldGrams || "")}" />
+                 <span class="hint" id="yield-note"></span>
+               </label>`
+        }
+      </div>
+    </div>
 
-  ingredientEditorRoot.innerHTML = ingredientModels.join("");
+    <div class="editor-card">
+      <div class="rows-head">
+        <div>
+          <h3 class="rows-title">${isDesign ? 'What goes into one piece <span class="jp">一個分</span>' : 'Ingredients <span class="jp">材料</span>'}</h3>
+          <p class="hint">${
+            isDesign
+              ? "Each colored portion of dough, plus any filling. The piece weight is the total, so it always adds up."
+              : "Raw weights for one batch, before cooking."
+          }</p>
+        </div>
+        <button type="button" class="secondary-btn" id="add-row">${ICON_PLUS} ${isDesign ? "Add portion" : "Add ingredient"}</button>
+      </div>
+      ${isDesign ? `<div id="preview-bar"></div>` : ""}
+      <div class="rows-scroll">
+        <div class="rows-grid">
+          <div class="edit-row head ${isDesign ? "design" : "base"}">${headCells}</div>
+          ${d.rows.map((row, index) => editRowHtml(row, index, isDesign)).join("")}
+        </div>
+      </div>
+      <div class="totals-line" id="totals-line"></div>
+    </div>
+
+    <div class="issues" id="issues" hidden></div>
+
+    <div class="actions">
+      <button type="submit" class="primary-btn">Save recipe</button>
+      <button type="button" class="secondary-btn" id="duplicate-recipe">Duplicate</button>
+      <span class="spacer"></span>
+      ${
+        builtIn
+          ? `<span class="hint">Built-in recipe: you can edit it, but not delete it.</span>`
+          : d.originalId
+            ? studio.confirmDelete
+              ? `<span class="confirm">Delete ${escapeHtml(d.name || "this recipe")}? This can’t be undone.
+                   <button type="button" class="danger-btn" id="confirm-delete">Delete</button>
+                   <button type="button" class="secondary-btn" id="cancel-delete">Keep it</button></span>`
+              : `<button type="button" class="danger-text" id="ask-delete">Delete…</button>`
+            : ""
+      }
+    </div>`;
+
+  renderEditorMeta();
 }
 
-function createRecipePayloadFromForm() {
-  syncStudioStateFromDom();
-  const rawIngredients = studioState.ingredients.map((ingredient, index) => ({
-    ...ingredient,
-    name: ingredient.name,
-    baseGrams: ingredient.baseGrams,
-    role: ingredient.role,
-    idHint: `ingredient-${index + 1}`
-  }));
-  const hydrationIndex = rawIngredients.findIndex(
-    (ingredient) => ingredient.role === "hydration-target"
-  );
-  const hydrationTargetIngredientId =
-    hydrationIndex >= 0
-      ? buildIngredientId(rawIngredients[hydrationIndex].name, hydrationIndex)
-      : "";
+function editRowHtml(row, index, isDesign) {
+  const label = escapeHtml(row.name.trim() || `row ${index + 1}`);
+  const missingJp = row.name.trim() && !row.jp.trim() ? " missing" : "";
+  const common = `
+    <input class="fld" type="text" data-row="${index}" data-field="name" value="${escapeHtml(row.name)}" aria-label="English name, ${label}" placeholder="${isDesign ? "Purple" : "Ingredient"}" autocomplete="off" />
+    <input class="fld${missingJp}" type="text" lang="ja" data-row="${index}" data-field="jp" value="${escapeHtml(row.jp)}" aria-label="Japanese name, ${label}" placeholder="${isDesign ? "紫" : "材料"}" autocomplete="off" />
+    <input class="fld num right" type="number" inputmode="decimal" min="0" step="0.1" data-row="${index}" data-field="g" value="${escapeHtml(row.g || "")}" aria-label="Grams, ${label}" />`;
+  const remove = `<button type="button" class="icon-btn" data-remove-row="${index}" aria-label="Remove ${label}">${ICON_TRASH}</button>`;
 
-  return {
-    id: studioState.originalId || studioState.name,
-    originalId: studioState.originalId,
-    name: studioState.name,
-    description: studioState.description,
-    yieldGrams: studioState.yieldGrams,
-    baseDoughRecipeId:
-      studioLibraryType === "design" ? studioState.baseDoughRecipeId : "",
-    hydrationTargetIngredientId,
-    ingredients: rawIngredients
-  };
+  if (!isDesign) {
+    return `<div class="edit-row base">${common}${remove}</div>`;
+  }
+  return `<div class="edit-row design">
+    <input type="color" class="color-input" data-row="${index}" data-field="swatch" value="${escapeHtml(row.swatch)}" aria-label="Color, ${label}" />
+    ${common}
+    <select class="fld" data-row="${index}" data-field="part" aria-label="Part, ${label}">
+      <option value="dough"${row.part === "dough" ? " selected" : ""}>Dough 生地</option>
+      <option value="filling"${row.part === "filling" ? " selected" : ""}>Filling 中あん</option>
+    </select>
+    ${remove}
+  </div>`;
 }
 
-function attachStudioMetadata(validatedRecipe, payload) {
-  // Match by position (same order as validateRecipeInput, which only filters empty-name rows).
-  // This avoids id-key collisions when two ingredients share the same name.
-  const filteredPayloadIngredients = (payload.ingredients ?? []).filter(
-    (ingredient) => String(ingredient?.name ?? "").trim().length > 0
-  );
+function draftIssues() {
+  const d = studio.draft;
+  const isDesign = studio.lib === "design";
+  const blocking = [];
+  const notes = [];
+  const named = d.rows.filter((row) => row.name.trim());
 
-  const nextRecipe = {
-    ...validatedRecipe,
-    ingredients: validatedRecipe.ingredients.map((ingredient, index) => {
-      const raw = filteredPayloadIngredients[index];
-      if (!raw) return ingredient;
-      const {
-        baseGrams: _baseGrams,
-        id: _id,
-        idHint: _idHint,
-        name: _name,
-        role: _role,
-        ...metadata
-      } = raw;
-      return { ...ingredient, ...metadata };
-    })
-  };
-
-  if (studioLibraryType === "design" && payload.baseDoughRecipeId) {
-    nextRecipe.baseDoughRecipeId = payload.baseDoughRecipeId;
+  if (!d.name.trim()) blocking.push("Add an English name.");
+  if (named.length < 2) blocking.push(isDesign ? "Add at least two portions." : "Add at least two ingredients.");
+  if (named.some((row) => !(Number(row.g) > 0))) blocking.push("Every row needs grams above zero.");
+  if (!isDesign) {
+    const raw = sumGrams(named, "g");
+    if (!(Number(d.yieldGrams) > 0)) blocking.push("Enter the cooked yield you weighed.");
+    else if (Number(d.yieldGrams) >= raw) notes.push("Cooked yield can’t match or beat the raw total. Water cooks off, so weigh a real batch.");
   }
+  if (!d.jp.trim()) notes.push("Add a Japanese name so labels stay bilingual everywhere.");
+  const missing = named.filter((row) => !row.jp.trim()).length;
+  if (missing) notes.push(`${missing} ${missing === 1 ? "row is" : "rows are"} missing a Japanese name.`);
 
-  if (studioLibraryType === "design" && !payload.baseDoughRecipeId) {
-    delete nextRecipe.baseDoughRecipeId;
-  }
-
-  return nextRecipe;
+  return { blocking, notes };
 }
 
-function saveRecipeFromForm() {
-  const sourceRecipes = getStudioRecipes();
-  const payload = createRecipePayloadFromForm();
-  const validation = validateRecipeInput(payload, sourceRecipes);
+// Updates the parts of the editor that depend on typed values, without re-rendering inputs.
+function renderEditorMeta() {
+  const d = studio.draft;
+  const isDesign = studio.lib === "design";
+  const exists = Boolean(d.originalId);
+  const title = $("#editor-title");
+  if (!title) return;
 
-  if (!validation.ok) {
-    setRecipeFormMessage(validation.error, "error");
-    return;
-  }
+  title.innerHTML = d.name.trim() || d.jp.trim()
+    ? bi({ name: d.name.trim() || "Untitled", jp: d.jp.trim() })
+    : isDesign ? "New design" : "New base dough";
 
-  const nextRecipe = attachStudioMetadata(validation.value, payload);
-  const previousOriginalId = studioState.originalId;
-
-  if (studioLibraryType === "base-dough") {
-    baseDoughRecipes = upsertBaseDoughRecipe(baseDoughRecipes, nextRecipe);
-    saveBaseDoughRecipes(baseDoughRecipes);
+  const status = $("#editor-status");
+  status.className = "status";
+  if (studio.saved) {
+    status.textContent = "Saved on this device";
+    status.classList.add("saved");
+  } else if (studio.dirty || !exists) {
+    status.textContent = studio.dirty ? "Unsaved changes" : "Not saved yet";
+    status.classList.add("pending");
   } else {
-    recipes = upsertRecipe(recipes, nextRecipe);
-    saveRecipes(recipes);
+    status.textContent = "Saved";
   }
 
-  populateCalculatorSelects();
-
-  if (studioLibraryType === "design") {
-    recipeSelect.value = nextRecipe.id;
-  } else if (!baseDoughSelect.value || baseDoughSelect.value === previousOriginalId) {
-    baseDoughSelect.value = nextRecipe.id;
-  }
-
-  syncRecipeDrivenFields();
-  loadStudioRecipe(nextRecipe);
-  setRecipeFormMessage(
-    `${nextRecipe.name} saved. Base ingredients total ${formatGrams(
-      validation.totalIngredientGrams
-    )}.`,
-    "success"
-  );
-  calculateAndRender();
-}
-
-function duplicateCurrentRecipe() {
-  const sourceRecipe =
-    studioState.originalId &&
-    getStudioRecipes().find((recipe) => recipe.id === studioState.originalId);
-
-  if (!sourceRecipe) {
-    setRecipeFormMessage(`Save a ${getStudioCollectionLabel()} before duplicating it.`, "error");
-    return;
-  }
-
-  loadStudioRecipe({
-    ...sourceRecipe,
-    id: "",
-    name: `${sourceRecipe.name} Copy`
-  });
-  studioState.originalId = "";
-  recipeForm.elements.name.value = `${sourceRecipe.name} Copy`;
-  setRecipeFormMessage(`${getStudioCollectionLabel()} duplicated into a new draft.`, "success");
-}
-
-function addIngredientRow() {
-  syncStudioStateFromDom();
-  studioState.ingredients.push({
-    name: "",
-    baseGrams: "",
-    role: undefined
-  });
-  renderIngredientEditor();
-}
-
-function removeIngredientRow(index) {
-  syncStudioStateFromDom();
-
-  if (studioState.ingredients.length <= 2) {
-    setRecipeFormMessage("Keep at least two ingredients in the recipe.", "error");
-    return;
-  }
-
-  studioState.ingredients.splice(index, 1);
-
-  // For base-dough recipes, always keep a hydration target assigned.
-  // For design recipes, it's optional — don't auto-assign.
-  if (
-    studioLibraryType === "base-dough" &&
-    !studioState.ingredients.some((ingredient) => ingredient.role === "hydration-target")
-  ) {
-    studioState.ingredients[studioState.ingredients.length - 1].role = "hydration-target";
-  }
-
-  renderIngredientEditor();
-}
-
-function selectHydrationTarget(index) {
-  syncStudioStateFromDom();
-  studioState.ingredients = studioState.ingredients.map((ingredient, ingredientIndex) => ({
-    ...ingredient,
-    role: ingredientIndex === index ? "hydration-target" : undefined
-  }));
-  renderIngredientEditor();
-}
-
-function initializeStudio() {
-  syncStudioChrome();
-  loadStudioRecipe(getStudioRecipes()[0] ?? createBlankStudioState());
-  setRecipeFormMessage(
-    "Recipe Studio saves edits in this browser and feeds them back into the calculator."
-  );
-}
-
-populateCalculatorSelects();
-applyCalculatorState(DEFAULT_STATE);
-syncRecipeDrivenFields();
-calculateAndRender();
-initializeStudio();
-setActiveView(appView);
-
-viewTabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    setActiveView(tab.dataset.view);
-  });
-});
-
-recipeSelect.addEventListener("change", () => {
-  syncRecipeDrivenFields({ syncBaseDough: true });
-  calculateAndRender();
-});
-
-form.addEventListener("input", () => {
-  syncCalculatorVisibility();
-  syncRecipeDrivenFields();
-  calculateAndRender();
-});
-
-form.addEventListener("change", () => {
-  syncCalculatorVisibility();
-  syncRecipeDrivenFields();
-  calculateAndRender();
-});
-
-loadExampleButton.addEventListener("click", () => {
-  applyCalculatorState(EXAMPLE_STATE);
-  syncRecipeDrivenFields({ syncBaseDough: true });
-  calculateAndRender();
-});
-
-recipeLibraryRoot.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-recipe-id]");
-
-  if (!button) {
-    return;
-  }
-
-  const recipe = getStudioRecipes().find((item) => item.id === button.dataset.recipeId);
-
-  if (recipe) {
-    loadStudioRecipe(recipe);
-    setRecipeFormMessage(`Editing ${recipe.name}.`, "success");
-  }
-});
-
-newRecipeButton.addEventListener("click", () => {
-  studioState = createBlankStudioState();
-  applyStudioStateToForm();
-  setRecipeFormMessage(`New ${getStudioCollectionLabel()} draft ready.`, "success");
-});
-
-addIngredientButton.addEventListener("click", () => {
-  addIngredientRow();
-});
-
-duplicateRecipeButton.addEventListener("click", () => {
-  duplicateCurrentRecipe();
-});
-
-libraryTypeTabs.forEach((button) => {
-  button.addEventListener("click", () => {
-    if (button.dataset.libraryType === studioLibraryType) {
-      return;
+  const named = d.rows.filter((row) => row.name.trim() || Number(row.g) > 0);
+  if (isDesign) {
+    const dough = named.filter((row) => row.part !== "filling");
+    const doughG = sumGrams(dough, "g");
+    const fillingG = sumGrams(named, "g") - doughG;
+    $("#preview-bar").innerHTML = barHtml(dough.map((row) => ({ baseGrams: row.g, swatch: row.swatch })), "big");
+    $("#totals-line").innerHTML = `<span>Per piece: ${grams(doughG)} dough${fillingG ? ` + ${grams(fillingG)} filling` : ""}</span><strong>${grams(doughG + fillingG)}</strong>`;
+  } else {
+    const raw = sumGrams(named, "g");
+    const yieldG = Number(d.yieldGrams) || 0;
+    $("#totals-line").innerHTML = `<span>Raw total for one batch</span><strong>${grams(raw)}</strong>`;
+    const note = $("#yield-note");
+    if (yieldG > 0 && yieldG < raw) {
+      note.textContent = `${grams(raw - yieldG)} cooks off (${n1(((raw - yieldG) / raw) * 100)}%). The calculator uses this to work out how much raw dough to make.`;
+      note.classList.remove("note-warn");
+    } else {
+      note.textContent = `Weigh the whole batch right after cooking. Raw total is ${grams(raw)}.`;
+      note.classList.add("note-warn");
     }
+  }
 
-    studioLibraryType = button.dataset.libraryType;
-    loadStudioRecipe(getStudioRecipes()[0] ?? createBlankStudioState());
-    setRecipeFormMessage(
-      studioLibraryType === "base-dough"
-        ? "Editing base dough recipes. Changes update the calculator selector."
-        : "Editing design recipes. Saved recipes feed directly into the calculator.",
-      "success"
-    );
+  const { blocking, notes } = draftIssues();
+  const issues = $("#issues");
+  const all = [...blocking, ...notes];
+  issues.hidden = all.length === 0;
+  issues.innerHTML = all.map((msg) => `<div>${escapeHtml(msg)}</div>`).join("");
+}
+
+function renderStudio() {
+  renderLibrary();
+  renderEditor();
+}
+
+function uniqueIds(ingredients) {
+  const seen = new Map();
+  return ingredients.map((ing) => {
+    const count = seen.get(ing.id) ?? 0;
+    seen.set(ing.id, count + 1);
+    return count ? { ...ing, id: `${ing.id}-${count + 1}` } : ing;
   });
+}
+
+function saveDraft() {
+  const d = studio.draft;
+  const isDesign = studio.lib === "design";
+  const { blocking } = draftIssues();
+  if (blocking.length) {
+    renderEditorMeta();
+    $("#issues").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+
+  const rows = d.rows.filter((row) => row.name.trim());
+  let payload;
+
+  if (isDesign) {
+    payload = {
+      id: d.originalId || undefined,
+      originalId: d.originalId,
+      name: d.name,
+      jp: d.jp,
+      description: d.description,
+      baseDoughRecipeId: d.baseDoughRecipeId,
+      yieldGrams: sumGrams(rows, "g"),
+      ingredients: rows.map((row) => {
+        const filling = row.part === "filling";
+        const white = isWhite(row);
+        return {
+          name: row.name.trim(),
+          jp: row.jp,
+          baseGrams: row.g,
+          type: filling ? "filling" : "colored-dough",
+          swatch: row.swatch,
+          ...(!filling && !white ? { colorLabel: row.name.trim().toLowerCase() } : {})
+        };
+      })
+    };
+  } else {
+    const waterIndex = rows.findIndex((row) => /water/i.test(row.name) || row.jp.trim() === "水");
+    payload = {
+      id: d.originalId || undefined,
+      originalId: d.originalId,
+      name: d.name,
+      jp: d.jp,
+      description: d.description,
+      yieldGrams: d.yieldGrams,
+      hydrationTargetIngredientId: waterIndex >= 0 ? buildIngredientId(rows[waterIndex].name, waterIndex) : "",
+      ingredients: rows.map((row) => ({ name: row.name.trim(), jp: row.jp, baseGrams: row.g }))
+    };
+  }
+
+  const validation = validateRecipeInput(payload, studioList());
+  if (!validation.ok) {
+    const issues = $("#issues");
+    issues.hidden = false;
+    issues.innerHTML = `<div>${escapeHtml(validation.error)}</div>`;
+    return;
+  }
+
+  const saved = { ...validation.value, ingredients: uniqueIds(validation.value.ingredients) };
+  if (!saved.hydrationTargetIngredientId) delete saved.hydrationTargetIngredientId;
+
+  if (isDesign) {
+    recipes = upsertRecipe(recipes, saved);
+    saveRecipes(recipes);
+  } else {
+    baseDoughs = upsertBaseDoughRecipe(baseDoughs, saved);
+    saveBaseDoughRecipes(baseDoughs);
+  }
+
+  studio.selectedId = saved.id;
+  studio.draft = draftFromRecipe(isDesign ? recipes.find((r) => r.id === saved.id) : baseDoughs.find((b) => b.id === saved.id), studio.lib);
+  studio.dirty = false;
+  studio.saved = true;
+  studio.confirmDelete = false;
+
+  afterLibraryChange();
+}
+
+function deleteCurrent() {
+  const id = studio.draft.originalId;
+  if (!id || isBuiltInRecipe(id)) return;
+
+  if (studio.lib === "design") {
+    recipes = deleteRecipe(recipes, id);
+    saveRecipes(recipes);
+    if (plan.recipeId === id) plan.recipeId = recipes[0]?.id ?? "";
+  } else {
+    baseDoughs = deleteRecipe(baseDoughs, id);
+    saveBaseDoughRecipes(baseDoughs);
+    if (plan.baseId === id) plan.baseId = "";
+  }
+  const first = studioList()[0];
+  selectInStudio(studio.lib, first?.id);
+  afterLibraryChange();
+}
+
+function afterLibraryChange() {
+  renderRecipeCards();
+  renderOptions();
+  renderStudio();
+  refreshPlan();
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+document.addEventListener("click", (event) => {
+  const target = event.target.closest("button, [data-go]");
+  if (!target) return;
+
+  if (target.dataset.go) {
+    plan.view = target.dataset.go;
+    refreshPlan();
+    window.scrollTo({ top: 0 });
+    return;
+  }
+  if (target.dataset.set) {
+    setPlanValue(target.dataset.set, target.dataset.value);
+    return;
+  }
+  if (target.dataset.step) {
+    setPlanValue("pieces", String((Number(plan.pieces) || 1) + Number(target.dataset.step)));
+    return;
+  }
+  if (target.dataset.lib) {
+    selectInStudio(target.dataset.lib, (target.dataset.lib === "design" ? recipes : baseDoughs)[0]?.id);
+    return;
+  }
+  if (target.dataset.pick) {
+    selectInStudio(studio.lib, target.dataset.pick);
+    return;
+  }
+  if (target.dataset.removeRow !== undefined) {
+    studio.draft.rows.splice(Number(target.dataset.removeRow), 1);
+    studio.dirty = true;
+    studio.saved = false;
+    renderEditor();
+    return;
+  }
+
+  switch (target.id) {
+    case "more-toggle":
+      plan.moreOpen = !plan.moreOpen;
+      syncControls();
+      break;
+    case "matrix-toggle":
+      plan.matrixOpen = !plan.matrixOpen;
+      renderPlan();
+      break;
+    case "open-options":
+      $("#options-sheet").showModal();
+      break;
+    case "close-options":
+      $("#options-sheet").close();
+      break;
+    case "reset-options":
+      plan.round = 0;
+      plan.coloring = "powder";
+      plan.baseId = getRecipe(plan.recipeId)?.baseDoughRecipeId ?? "";
+      refreshPlan();
+      break;
+    case "new-recipe":
+      selectInStudio(studio.lib, null);
+      $('[data-draft="name"]')?.focus();
+      break;
+    case "add-row": {
+      const isDesign = studio.lib === "design";
+      studio.draft.rows.push(isDesign ? { name: "", jp: "", g: 0, swatch: COLOR_SWATCHES.yellow, part: "dough" } : { name: "", jp: "", g: 0 });
+      studio.dirty = true;
+      studio.saved = false;
+      renderEditor();
+      $(`[data-row="${studio.draft.rows.length - 1}"][data-field="name"]`)?.focus();
+      break;
+    }
+    case "duplicate-recipe": {
+      const copy = structuredClone(studio.draft);
+      copy.originalId = "";
+      copy.name = `${copy.name || "Untitled"} copy`;
+      copy.jp = copy.jp ? `${copy.jp}（コピー）` : "";
+      studio.draft = copy;
+      studio.selectedId = null;
+      studio.dirty = true;
+      studio.saved = false;
+      studio.confirmDelete = false;
+      renderStudio();
+      break;
+    }
+    case "ask-delete":
+      studio.confirmDelete = true;
+      renderEditor();
+      break;
+    case "cancel-delete":
+      studio.confirmDelete = false;
+      renderEditor();
+      break;
+    case "confirm-delete":
+      deleteCurrent();
+      break;
+    default:
+      break;
+  }
 });
 
-recipeForm.addEventListener("submit", (event) => {
+// Click on the dimmed area closes the phone sheet.
+$("#options-sheet").addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
+
+document.addEventListener("change", (event) => {
+  const el = event.target;
+  if (el.dataset.bind) {
+    setPlanValue(el.dataset.bind, el.value);
+  } else if (el.dataset.done) {
+    plan.done[el.dataset.done] = el.checked;
+  } else if (el.dataset.field === "part" || el.dataset.draft === "baseDoughRecipeId") {
+    handleDraftInput(el);
+    renderEditorMeta();
+  }
+});
+
+document.addEventListener("input", (event) => {
+  const el = event.target;
+  if (el.dataset.bind === "pieces" || el.dataset.bind === "liquid") {
+    if (el.value === "") return; // let people clear the field while typing
+    setPlanValue(el.dataset.bind, el.value);
+  } else if (el.dataset.draft || el.dataset.row !== undefined) {
+    handleDraftInput(el);
+  }
+});
+
+function handleDraftInput(el) {
+  const d = studio.draft;
+  if (el.dataset.draft) {
+    d[el.dataset.draft] = el.dataset.draft === "yieldGrams" ? Number.parseFloat(el.value) || 0 : el.value;
+  } else {
+    const row = d.rows[Number(el.dataset.row)];
+    if (!row) return;
+    row[el.dataset.field] = el.dataset.field === "g" ? Number.parseFloat(el.value) || 0 : el.value;
+    if (el.dataset.field === "jp" || el.dataset.field === "name") {
+      const jpInput = $(`[data-row="${el.dataset.row}"][data-field="jp"]`);
+      jpInput?.classList.toggle("missing", Boolean(row.name.trim() && !row.jp.trim()));
+    }
+  }
+  studio.dirty = true;
+  studio.saved = false;
+  renderEditorMeta();
+}
+
+$("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  saveRecipeFromForm();
+  saveDraft();
 });
 
-ingredientEditorRoot.addEventListener("click", (event) => {
-  const removeButton = event.target.closest("[data-remove-ingredient]");
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
 
-  if (removeButton) {
-    removeIngredientRow(Number(removeButton.dataset.removeIngredient));
-  }
-});
+if (!getRecipe(plan.recipeId) || plan.recipeId !== getRecipe(plan.recipeId)?.id) {
+  plan.recipeId = recipes[0]?.id ?? "";
+}
+if (!plan.baseId) plan.baseId = getRecipe(plan.recipeId)?.baseDoughRecipeId ?? "";
 
-ingredientEditorRoot.addEventListener("change", (event) => {
-  const row = event.target.closest("[data-ingredient-index]");
-
-  if (!row) {
-    return;
-  }
-
-  if (event.target.matches('[data-field="hydrationTarget"]')) {
-    selectHydrationTarget(Number(row.dataset.ingredientIndex));
-    return;
-  }
-
-  syncStudioStateFromDom();
-});
-
-recipeForm.addEventListener("input", () => {
-  syncStudioStateFromDom();
-});
-
-recipeForm.addEventListener("change", () => {
-  syncStudioStateFromDom();
-});
+renderRecipeCards();
+renderOptions();
+selectInStudio("design", recipes[0]?.id);
+refreshPlan();
