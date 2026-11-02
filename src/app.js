@@ -2,7 +2,7 @@ import {
   calculateColorSplit,
   calculateRecipePlan,
   checkRecipeConsistency
-} from "./calculator.js?v=20261102-prep-sheet";
+} from "./calculator.js?v=20261102-wizard";
 import {
   buildIngredientId,
   deleteRecipe,
@@ -14,7 +14,7 @@ import {
   upsertBaseDoughRecipe,
   upsertRecipe,
   validateRecipeInput
-} from "./recipe-store.js?v=20261102-prep-sheet";
+} from "./recipe-store.js?v=20261102-wizard";
 import { COLOR_SWATCHES, STEP_LABELS } from "./data.js";
 
 // ---------------------------------------------------------------------------
@@ -39,8 +39,13 @@ const plan = {
   moreOpen: false,
   matrixOpen: false,
   done: {},
+  setupDone: false,
+  wizStep: 1,
   ...loadPlanPrefs()
 };
+
+// First visit (or an older save from before the guided setup): start with the questions.
+if (!plan.setupDone) plan.view = "wizard";
 
 const studio = {
   lib: "design",
@@ -56,7 +61,7 @@ function loadPlanPrefs() {
     const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
     if (!raw) return {};
     const saved = JSON.parse(raw);
-    const allowed = ["view", "recipeId", "baseId", "pieces", "loss", "round", "coloring", "liquid"];
+    const allowed = ["view", "recipeId", "baseId", "pieces", "loss", "round", "coloring", "liquid", "setupDone"];
     return Object.fromEntries(Object.entries(saved).filter(([key]) => allowed.includes(key)));
   } catch {
     return {};
@@ -65,10 +70,10 @@ function loadPlanPrefs() {
 
 function savePlanPrefs() {
   try {
-    const { view, recipeId, baseId, pieces, loss, round, coloring, liquid } = plan;
+    const { view, recipeId, baseId, pieces, loss, round, coloring, liquid, setupDone } = plan;
     window.localStorage.setItem(
       PLAN_STORAGE_KEY,
-      JSON.stringify({ view, recipeId, baseId, pieces, loss, round, coloring, liquid })
+      JSON.stringify({ view, recipeId, baseId, pieces, loss, round, coloring, liquid, setupDone })
     );
   } catch {
     // Private mode or storage blocked: the app still works for this visit.
@@ -195,8 +200,8 @@ function computePlan() {
 // Calculator: rendering
 // ---------------------------------------------------------------------------
 
-function renderRecipeCards() {
-  $("#recipe-cards").innerHTML = recipes
+function recipeCardsHtml() {
+  return recipes
     .map((recipe) => {
       const parts = doughParts(recipe);
       const summary = (recipe.ingredients ?? [])
@@ -209,6 +214,11 @@ function renderRecipeCards() {
       </button>`;
     })
     .join("");
+}
+
+function renderRecipeCards() {
+  $("#recipe-cards").innerHTML = recipeCardsHtml();
+  if (plan.view === "wizard" && plan.wizStep === 1) renderWizard();
 
   $$('select[data-bind="recipeId"]').forEach((select) => {
     select.innerHTML = recipes
@@ -299,6 +309,11 @@ function renderPlan() {
   const keyPrefix = `${recipe.id}:`;
 
   setOut("piecesLine", `${pieces} × ${n1(recipe.yieldGrams)} g = ${grams(pieces * recipe.yieldGrams)} of finished sweets`);
+  setOut(
+    "answersLine",
+    `${bi(recipe)} · ${pieces} ${pieces === 1 ? "piece" : "pieces"} · ${lossPct ? `+${lossPct}% extra` : "no extra"} · ${plan.coloring} coloring`,
+    true
+  );
   setOut("titleHtml", bi(recipe), true);
   setOut(
     "moreSummary",
@@ -521,16 +536,107 @@ function syncControls() {
   });
 
   document.body.dataset.view = plan.view;
+  $("#view-wizard").hidden = plan.view !== "wizard";
   $("#view-plan").hidden = plan.view !== "plan";
   $("#view-studio").hidden = plan.view !== "studio";
+  const section = plan.view === "wizard" ? "plan" : plan.view;
   $$("[data-go]").forEach((el) => {
-    if (el.dataset.go === plan.view) el.setAttribute("aria-current", "page");
+    if (el.dataset.go === section) el.setAttribute("aria-current", "page");
     else el.removeAttribute("aria-current");
   });
 
   const moreToggle = $("#more-toggle");
   moreToggle.setAttribute("aria-expanded", String(plan.moreOpen));
   $("#options-wide").hidden = !plan.moreOpen;
+}
+
+// ---------------------------------------------------------------------------
+// Guided setup
+// ---------------------------------------------------------------------------
+
+const WIZARD_STEPS = 4;
+
+function choiceHtml(key, value, title, description) {
+  return `<button type="button" class="choice" data-set="${key}" data-value="${escapeHtml(value)}">
+    <span class="choice-title">${title}</span>
+    ${description ? `<span class="choice-desc">${description}</span>` : ""}
+  </button>`;
+}
+
+function renderWizard() {
+  const step = plan.wizStep;
+  const recipe = getRecipe(plan.recipeId);
+  let title = "";
+  let help = "";
+  let body = "";
+
+  if (step === 1) {
+    title = "What are you making?";
+    help = "Pick a design. You can add your own later in Recipe Studio.";
+    body = `<div class="wiz-cards">${recipeCardsHtml()}</div>`;
+  } else if (step === 2) {
+    title = "How many pieces?";
+    help = recipe ? `Each ${bi(recipe)} weighs ${grams(recipe.yieldGrams)}.` : "";
+    body = `
+      <div class="stepper stepper-large wiz-stepper">
+        <button type="button" class="step-btn" data-step="-1" aria-label="One fewer piece">−</button>
+        <input class="num" type="number" inputmode="numeric" min="1" step="1" data-bind="pieces" aria-label="Number of pieces" />
+        <button type="button" class="step-btn" data-step="1" aria-label="One more piece">+</button>
+      </div>
+      <div class="chips five" role="group" aria-label="Common amounts">
+        ${[4, 6, 10, 12, 20].map((n) => `<button type="button" class="chip-btn" data-set="pieces" data-value="${n}">${n}</button>`).join("")}
+      </div>
+      <p class="hint num wiz-out" data-out="piecesLine"></p>`;
+  } else if (step === 3) {
+    title = "Add a little extra dough?";
+    help = "Some dough always sticks to hands, cloths and tools while you color and shape. A little extra means you won't run short.";
+    body = `<div class="choices">
+      ${choiceHtml("loss", 0, "No extra", "You work cleanly and want exact amounts.")}
+      ${choiceHtml("loss", 5, "A little · 5%", "For simple shapes with few colors.")}
+      ${choiceHtml("loss", 10, "Recommended · 10%", "A safe choice, especially the first few times.")}
+      ${choiceHtml("loss", 15, "Generous · 15%", "Lots of small details, very soft dough, or you want spare.")}
+    </div>`;
+  } else {
+    title = "How will you color the dough?";
+    help = "This only changes the water in the base dough.";
+    body = `<div class="choices">
+      ${choiceHtml("coloring", "powder", "Powder", "Doesn’t change the water.")}
+      ${choiceHtml("coloring", "liquid", "Liquid", "Its weight is taken off the water, so the dough isn’t too wet.")}
+    </div>
+    <label class="inline-field wiz-liquid" data-only-liquid>About how much liquid coloring in total? (g)
+      <input class="fld num" type="number" inputmode="decimal" min="0" step="0.1" data-bind="liquid" />
+    </label>
+    <p class="hint">You can change the base dough and rounding later under More options.</p>`;
+  }
+
+  $("#wiz-count").textContent = `Step ${step} of ${WIZARD_STEPS}`;
+  $$(".wiz-dots i").forEach((dot, index) => dot.classList.toggle("on", index < step));
+  $("#wiz-title").textContent = title;
+  $("#wiz-help").innerHTML = help;
+  $("#wiz-body").innerHTML = body;
+  $("#wiz-help").hidden = !help;
+
+  const back = $("#wiz-back");
+  back.textContent = step === 1 ? (plan.setupDone ? "Cancel" : "") : "Back";
+  back.hidden = step === 1 && !plan.setupDone;
+  $("#wiz-next").textContent = step === WIZARD_STEPS ? "Show my recipe" : "Next";
+  $$("#wiz-body [data-only-liquid]").forEach((el) => (el.hidden = plan.coloring !== "liquid"));
+}
+
+function goWizard(step) {
+  plan.wizStep = Math.min(Math.max(step, 1), WIZARD_STEPS);
+  plan.view = "wizard";
+  renderWizard();
+  refreshPlan();
+  window.scrollTo({ top: 0 });
+  $("#wiz-title").focus({ preventScroll: true });
+}
+
+function finishWizard() {
+  plan.setupDone = true;
+  plan.view = "plan";
+  refreshPlan();
+  window.scrollTo({ top: 0 });
 }
 
 function refreshPlan() {
@@ -975,6 +1081,10 @@ document.addEventListener("click", (event) => {
   if (!target) return;
 
   if (target.dataset.go) {
+    if (target.dataset.go === "plan" && !plan.setupDone) {
+      goWizard(plan.wizStep);
+      return;
+    }
     plan.view = target.dataset.go;
     refreshPlan();
     window.scrollTo({ top: 0 });
@@ -982,6 +1092,9 @@ document.addEventListener("click", (event) => {
   }
   if (target.dataset.set) {
     setPlanValue(target.dataset.set, target.dataset.value);
+    // Picking a design on the first question moves straight on to the next one.
+    if (plan.view === "wizard" && plan.wizStep === 1 && target.dataset.set === "recipeId") goWizard(2);
+    else if (plan.view === "wizard") $$("#wiz-body [data-only-liquid]").forEach((el) => (el.hidden = plan.coloring !== "liquid"));
     return;
   }
   if (target.dataset.step) {
@@ -1005,6 +1118,17 @@ document.addEventListener("click", (event) => {
   }
 
   switch (target.id) {
+    case "wiz-next":
+      if (plan.wizStep >= WIZARD_STEPS) finishWizard();
+      else goWizard(plan.wizStep + 1);
+      break;
+    case "wiz-back":
+      if (plan.wizStep === 1) finishWizard();
+      else goWizard(plan.wizStep - 1);
+      break;
+    case "change-answers":
+      goWizard(1);
+      break;
     case "more-toggle":
       plan.moreOpen = !plan.moreOpen;
       syncControls();
@@ -1129,4 +1253,5 @@ if (!plan.baseId) plan.baseId = getRecipe(plan.recipeId)?.baseDoughRecipeId ?? "
 renderRecipeCards();
 renderOptions();
 selectInStudio("design", recipes[0]?.id);
+renderWizard();
 refreshPlan();

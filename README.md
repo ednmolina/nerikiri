@@ -9,6 +9,17 @@ A static, browser-based planner for nerikiri. Pick a design, say how many pieces
 
 A **totals check** at the end shows the arithmetic, and warns when a base dough's yield can't be right (for example, a yield that assumes no water cooks off).
 
+## First visit: four quick questions
+
+New visitors aren't dropped straight into the full breakdown. A short guided setup asks one thing per screen:
+
+1. What are you making?
+2. How many pieces?
+3. How much extra dough for handling? (0%, 5%, 10% recommended, 15%)
+4. Powder or liquid coloring?
+
+**Show my recipe** then opens the full prep sheet, with a one-line summary of the answers and a **Change** button to go through them again. Returning visits go straight to the prep sheet.
+
 ## One app, arranged for the screen
 
 | Screen | Layout |
