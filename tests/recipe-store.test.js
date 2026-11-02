@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { BASE_DOUGH_RECIPES } from "../src/data.js";
 import {
+  deleteRecipe,
+  isBuiltInRecipe,
   loadBaseDoughRecipes,
   loadRecipes,
   saveBaseDoughRecipes,
@@ -266,4 +268,80 @@ test("saveBaseDoughRecipes round-trips custom recipes and upsert replaces by id"
     assert.equal(roundTrippedCustom?.name, "House Signature Base");
     assert.equal(roundTrippedCustom?.ingredients[2].role, "hydration-target");
   });
+});
+
+test("validateRecipeInput keeps Japanese names, colors and parts for design recipes", () => {
+  const result = validateRecipeInput({
+    name: "Camellia",
+    jp: "椿",
+    baseDoughRecipeId: "base-nerikiri-paste",
+    yieldGrams: 32,
+    ingredients: [
+      { name: "White", jp: "白", baseGrams: 20, type: "colored-dough", swatch: "#F4F0E6" },
+      { name: "Red", jp: "赤", baseGrams: 12, type: "colored-dough", colorLabel: "red", swatch: "#C9483B" }
+    ]
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.jp, "椿");
+  assert.equal(result.value.baseDoughRecipeId, "base-nerikiri-paste");
+  assert.deepEqual(
+    result.value.ingredients.map((i) => [i.name, i.jp, i.type, i.colorLabel ?? null, i.swatch]),
+    [
+      ["White", "白", "colored-dough", null, "#F4F0E6"],
+      ["Red", "赤", "colored-dough", "red", "#C9483B"]
+    ]
+  );
+});
+
+test("loadRecipes splits older saved names into English + Japanese", () => {
+  withMockWindow((storage) => {
+    storage.setItem(
+      "nerikiri-recipes-v3",
+      JSON.stringify([
+        {
+          id: "iris-nerikiri",
+          name: "Iris Nerikiri (あやめ)",
+          yieldGrams: 41,
+          baseDoughRecipeId: "base-nerikiri-paste",
+          ingredients: [
+            { id: "white-nerikiri-paste", name: "White nerikiri paste", baseGrams: 22 },
+            { id: "purple-nerikiri-paste", name: "Purple nerikiri paste", baseGrams: 3 },
+            { id: "yellow-nerikiri-paste", name: "Yellow nerikiri paste", baseGrams: 1 },
+            { id: "green-nerikiri-paste", name: "Green nerikiri paste", baseGrams: 2 },
+            { id: "inner-filling-paste", name: "Inner filling paste", baseGrams: 13 }
+          ]
+        },
+        {
+          id: "plum",
+          name: "Plum (梅)",
+          yieldGrams: 20,
+          baseDoughRecipeId: "base-nerikiri-paste",
+          ingredients: [
+            { id: "white", name: "White", baseGrams: 10 },
+            { id: "pink", name: "Pink", baseGrams: 10 }
+          ]
+        }
+      ])
+    );
+
+    const recipes = loadRecipes();
+    const iris = recipes.find((r) => r.id === "iris-nerikiri");
+    const plum = recipes.find((r) => r.id === "plum");
+
+    assert.equal(iris.name, "Iris");
+    assert.equal(iris.jp, "あやめ");
+    assert.deepEqual(iris.ingredients.map((i) => i.name), ["White", "Purple", "Yellow", "Green", "Inner filling"]);
+    assert.equal(iris.ingredients[1].jp, "紫");
+    assert.equal(plum.name, "Plum");
+    assert.equal(plum.jp, "梅");
+  });
+});
+
+test("deleteRecipe removes custom recipes; built-ins are recognised", () => {
+  const recipes = [{ id: "iris-nerikiri", ingredients: [] }, { id: "plum", ingredients: [] }];
+  assert.deepEqual(deleteRecipe(recipes, "plum").map((r) => r.id), ["iris-nerikiri"]);
+  assert.equal(isBuiltInRecipe("iris-nerikiri"), true);
+  assert.equal(isBuiltInRecipe("base-nerikiri-paste"), true);
+  assert.equal(isBuiltInRecipe("plum"), false);
 });

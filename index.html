@@ -2,314 +2,160 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Nerikiri Recipe Calculator</title>
-    <meta
-      name="description"
-      content="Hydration-aware nerikiri batch planning with optional liquid coloring adjustment."
-    />
-    <link rel="stylesheet" href="./styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Nerikiri 練り切り</title>
+    <meta name="description" content="Plan nerikiri batches: base dough, color portions, filling and shaping, with totals that add up." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Nerikiri" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&display=swap" />
+    <link rel="stylesheet" href="./styles.css?v=20261102-prep-sheet" />
   </head>
-  <body>
-    <div class="page-shell">
-      <header class="hero card">
-        <div class="hero-copy">
-          <p class="eyebrow">Hydration-aware Wagashi Planning</p>
-          <h1>Nerikiri Recipe Calculator</h1>
-          <p class="hero-text">
-            Plan sculpted nerikiri batches with exact or batch-based scaling,
-            process loss, optional liquid-coloring moisture correction, and a
-            separate recipe studio for building your own dough library.
-          </p>
+  <body data-view="plan">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand"><span class="brand-en">Nerikiri</span> <span class="brand-jp">練り切り</span></div>
+        <nav class="tabs" aria-label="App sections">
+          <button type="button" class="tab" data-go="plan">Calculator</button>
+          <button type="button" class="tab" data-go="studio">Recipe Studio</button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <!-- Calculator -->
+      <section class="view" id="view-plan" aria-label="Calculator">
+        <div class="layout">
+          <aside class="card setup" aria-labelledby="setup-title">
+            <h1 id="setup-title" class="display">Plan a batch</h1>
+
+            <div class="group">
+              <span class="group-label" id="recipe-label">What are you making?</span>
+              <div class="recipe-cards" id="recipe-cards" role="group" aria-labelledby="recipe-label"></div>
+            </div>
+
+            <div class="group">
+              <label class="group-label" for="pieces-wide">How many pieces?</label>
+              <div class="stepper stepper-large">
+                <button type="button" class="step-btn" data-step="-1" aria-label="One fewer piece">−</button>
+                <input id="pieces-wide" class="num" type="number" inputmode="numeric" min="1" step="1" data-bind="pieces" />
+                <button type="button" class="step-btn" data-step="1" aria-label="One more piece">+</button>
+              </div>
+              <p class="hint num" data-out="piecesLine"></p>
+            </div>
+
+            <div class="group">
+              <span class="group-label" id="loss-label">Extra dough for handling</span>
+              <div class="chips" role="group" aria-labelledby="loss-label">
+                <button type="button" class="chip-btn" data-set="loss" data-value="0">0%</button>
+                <button type="button" class="chip-btn" data-set="loss" data-value="5">5%</button>
+                <button type="button" class="chip-btn" data-set="loss" data-value="10">10%</button>
+                <button type="button" class="chip-btn" data-set="loss" data-value="15">15%</button>
+              </div>
+              <p class="hint">Covers dough lost to coloring, shaping and sticky hands. 10% is a safe start.</p>
+            </div>
+
+            <div class="more">
+              <button type="button" class="more-toggle" id="more-toggle" aria-expanded="false" aria-controls="options-wide">
+                <span>More options</span>
+                <span class="hint" data-out="moreSummary"></span>
+              </button>
+              <div id="options-wide" class="options" hidden></div>
+            </div>
+          </aside>
+
+          <section class="sheet" aria-label="Prep sheet">
+            <div class="phone-header">
+              <div class="phone-header-row">
+                <label class="title-picker">
+                  <span class="title-text" data-out="titleHtml"></span>
+                  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+                  <select class="overlay-select" data-bind="recipeId" aria-label="Recipe"></select>
+                </label>
+                <button type="button" class="glass-circle" id="open-options" aria-label="Batch options">
+                  <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle><path d="M4 17h4"></path><path d="M12 17h8"></path><circle cx="10" cy="17" r="2"></circle></svg>
+                </button>
+              </div>
+              <p class="hint num" data-out="piecesLine"></p>
+            </div>
+
+            <div class="summary" id="summary"></div>
+            <div id="steps" class="steps"></div>
+            <div id="totals"></div>
+            <div id="minibatch"></div>
+          </section>
         </div>
-        <div class="hero-metrics" id="hero-metrics" aria-live="polite"></div>
-      </header>
 
-      <nav class="view-switcher card" aria-label="App sections">
-        <button class="view-tab active" id="tab-calculator" type="button" data-view="calculator">
-          Calculator
-        </button>
-        <button class="view-tab" id="tab-studio" type="button" data-view="studio">
-          Recipe Studio
-        </button>
-      </nav>
-
-      <main>
-        <section class="view-panel" id="view-calculator" data-view-panel="calculator">
-          <div class="workspace">
-            <section class="card form-card">
-              <div class="section-heading">
-                <div>
-                  <p class="section-kicker">Calculation Setup</p>
-                  <h2>Dial in the batch</h2>
-                </div>
-                <button class="ghost-button" id="load-example" type="button">
-                  Load Example
-                </button>
-              </div>
-
-              <form id="calculator-form" novalidate>
-                <div class="field-grid">
-                  <label class="field">
-                    <span>Recipe</span>
-                    <select id="recipeId" name="recipeId"></select>
-                  </label>
-
-                  <label class="field hidden" id="base-dough-field">
-                    <span>Base dough recipe</span>
-                    <select id="baseDoughRecipeId" name="baseDoughRecipeId"></select>
-                  </label>
-
-                  <fieldset class="field">
-                    <legend>Calculation mode</legend>
-                    <div class="segmented">
-                      <input
-                        type="radio"
-                        id="mode-exact"
-                        name="mode"
-                        value="exact"
-                        checked
-                      />
-                      <label for="mode-exact">Exact pieces</label>
-
-                      <input type="radio" id="mode-batch" name="mode" value="batch" />
-                      <label for="mode-batch">Batch grams</label>
-                    </div>
-                  </fieldset>
-                </div>
-
-                <div class="field-grid exact-fields exact-piece-fields" id="exact-fields">
-                  <label class="field">
-                    <span>Piece count</span>
-                    <input
-                      id="pieceCount"
-                      name="pieceCount"
-                      type="number"
-                      min="1"
-                      step="1"
-                      value="5"
-                    />
-                  </label>
-
-                  <label class="field">
-                    <span>Recipe piece weight (g)</span>
-                    <input
-                      id="pieceWeightGrams"
-                      name="pieceWeightGrams"
-                      type="number"
-                      min="1"
-                      step="0.1"
-                      value="41"
-                      readonly
-                    />
-                    <small>Determined by the selected recipe.</small>
-                  </label>
-                </div>
-
-                <div class="field-grid batch-fields hidden" id="batch-fields">
-                  <label class="field">
-                    <span>Desired finished dough (g)</span>
-                    <input
-                      id="batchWeightGrams"
-                      name="batchWeightGrams"
-                      type="number"
-                      min="1"
-                      step="0.1"
-                      value="280"
-                    />
-                  </label>
-                </div>
-
-                <div class="field-grid">
-                  <label class="field">
-                    <span>Process loss (%)</span>
-                    <input
-                      id="processLossPct"
-                      name="processLossPct"
-                      type="number"
-                      min="0"
-                      max="95"
-                      step="0.1"
-                      value="0"
-                    />
-                    <small>Scales the batch up before hydration logic.</small>
-                  </label>
-
-                  <label class="field">
-                    <span>Round weigh-outs</span>
-                    <select id="roundToIncrement" name="roundToIncrement">
-                      <option value="">No rounding</option>
-                      <option value="0.05">0.05 g</option>
-                      <option value="0.1">0.1 g</option>
-                      <option value="0.25">0.25 g</option>
-                      <option value="0.5">0.5 g</option>
-                    </select>
-                  </label>
-                </div>
-
-                <div class="hydration-panel">
-                  <div class="section-heading compact">
-                    <div>
-                      <p class="section-kicker">Coloring Hydration</p>
-                      <h2>Choose how coloring behaves</h2>
-                    </div>
-                  </div>
-
-                  <fieldset class="field">
-                    <legend>Coloring mode</legend>
-                    <div class="segmented">
-                      <input
-                        type="radio"
-                        id="coloring-powder"
-                        name="coloringMode"
-                        value="powder"
-                        checked
-                      />
-                      <label for="coloring-powder">Powder</label>
-
-                      <input
-                        type="radio"
-                        id="coloring-liquid"
-                        name="coloringMode"
-                        value="liquid"
-                      />
-                      <label for="coloring-liquid">Liquid</label>
-                    </div>
-                  </fieldset>
-
-                  <div class="field-grid liquid-fields hidden" id="liquid-fields">
-                    <label class="field">
-                      <span>Liquid coloring total (g)</span>
-                      <input
-                        id="liquidColoringAmount"
-                        name="liquidColoringAmount"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value="1.2"
-                      />
-                      <small>
-                        Counted gram-for-gram as moisture in this MVP rule.
-                      </small>
-                    </label>
-                  </div>
-
-                  <p class="hydration-note">
-                    Powder leaves the base water untouched. Liquid reduces added
-                    water with a zero floor so the dough never goes negative.
-                  </p>
-                </div>
-              </form>
-            </section>
-
-            <section class="card results-card">
-              <div class="section-heading">
-                <div>
-                  <p class="section-kicker">Transparent Output</p>
-                  <h2>Recipe report</h2>
-                </div>
-              </div>
-
-              <div id="results" aria-live="polite"></div>
-            </section>
+        <div class="pieces-bar glass" aria-label="Batch size">
+          <span class="pieces-bar-label" id="pieces-phone-label">Pieces</span>
+          <div class="stepper">
+            <button type="button" class="step-btn round" data-step="-1" aria-label="One fewer piece">−</button>
+            <input class="num" type="number" inputmode="numeric" min="1" step="1" data-bind="pieces" aria-labelledby="pieces-phone-label" />
+            <button type="button" class="step-btn round" data-step="1" aria-label="One more piece">+</button>
           </div>
-        </section>
+          <label class="pill-select">
+            <span class="visually-hidden">Extra dough for handling</span>
+            <select data-bind="loss">
+              <option value="0">No extra</option>
+              <option value="5">+5%</option>
+              <option value="10">+10%</option>
+              <option value="15">+15%</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
-        <section class="view-panel hidden" id="view-studio" data-view-panel="studio">
-          <div class="studio-layout">
-            <section class="card studio-sidebar">
-              <div class="section-heading">
-                <div>
-                  <p class="section-kicker">Recipe Library</p>
-                  <h2 id="recipe-library-heading">Saved design recipes</h2>
-                </div>
-                <button class="ghost-button" id="new-recipe" type="button">
-                  New Design Recipe
-                </button>
-              </div>
-              <div class="library-type-toggle" aria-label="Recipe library type">
-                <button
-                  class="library-tab active"
-                  id="library-tab-design"
-                  type="button"
-                  data-library-type="design"
-                >
-                  Design Recipes
-                </button>
-                <button
-                  class="library-tab"
-                  id="library-tab-base-dough"
-                  type="button"
-                  data-library-type="base-dough"
-                >
-                  Base Dough
-                </button>
-              </div>
-              <div id="recipe-library" class="recipe-library" aria-live="polite"></div>
-            </section>
+      <!-- Recipe Studio -->
+      <section class="view" id="view-studio" aria-label="Recipe Studio" hidden>
+        <div class="layout">
+          <aside class="card library" aria-labelledby="library-title">
+            <h1 id="library-title" class="display">Recipes</h1>
+            <div class="chips two" role="group" aria-label="Recipe type">
+              <button type="button" class="chip-btn" data-lib="design">Designs</button>
+              <button type="button" class="chip-btn" data-lib="base">Base doughs</button>
+            </div>
+            <button type="button" class="new-btn" id="new-recipe">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              <span id="new-recipe-label">New design</span>
+            </button>
+            <div id="library-list" class="library-list"></div>
+            <p class="hint device-note">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M10 18h4"></path></svg>
+              Recipes save on this device, in this browser.
+            </p>
+          </aside>
 
-            <section class="card studio-editor">
-              <div class="section-heading">
-                <div>
-                  <p class="section-kicker">Recipe Studio</p>
-                  <h2 id="studio-editor-heading">Create or edit a design recipe</h2>
-                </div>
-              </div>
+          <form class="editor" id="recipe-form" novalidate></form>
+        </div>
+      </section>
+    </main>
 
-              <form id="recipe-form" novalidate>
-                <div class="field-grid">
-                  <label class="field">
-                    <span>Recipe name</span>
-                    <input id="recipe-name" name="name" type="text" placeholder="Spring Nerikiri Base" />
-                  </label>
+    <nav class="tabbar glass" aria-label="Sections">
+      <button type="button" class="tabbar-item" data-go="plan">
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"></rect><path d="M8 9l1.5 1.5L12 8"></path><path d="M14 9.5h2.5"></path><path d="M8 15l1.5 1.5L12 14"></path><path d="M14 15.5h2.5"></path></svg>
+        <span>Plan</span>
+      </button>
+      <button type="button" class="tabbar-item" data-go="studio">
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"></path><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"></path></svg>
+        <span>Recipes</span>
+      </button>
+    </nav>
 
-                  <label class="field">
-                    <span>Base yield (g)</span>
-                    <input id="recipe-yield" name="yieldGrams" type="number" min="1" step="0.1" />
-                  </label>
-                </div>
+    <dialog id="options-sheet" class="sheet-dialog" aria-labelledby="options-sheet-title">
+      <div class="grabber" aria-hidden="true"></div>
+      <div class="sheet-head">
+        <button type="button" class="text-btn" id="reset-options">Reset</button>
+        <h2 id="options-sheet-title">Batch Options</h2>
+        <button type="button" class="done-btn" id="close-options">Done</button>
+      </div>
+      <div id="options-phone" class="options"></div>
+    </dialog>
 
-                <label class="field">
-                  <span>Description</span>
-                  <textarea id="recipe-description" name="description" rows="3" placeholder="Soft enough for petals, strong enough for clean cuts."></textarea>
-                </label>
-
-                <label class="field" id="studio-base-dough-field">
-                  <span>Default base dough</span>
-                  <select id="studio-baseDoughRecipeId" name="baseDoughRecipeId"></select>
-                  <small>
-                    Sets the calculator’s default dough for this design recipe.
-                  </small>
-                </label>
-
-                <div class="studio-ingredient-header">
-                  <div>
-                    <p class="section-kicker">Ingredients</p>
-                    <h3>Base formula</h3>
-                  </div>
-                  <button class="ghost-button" id="add-ingredient" type="button">
-                    Add Ingredient
-                  </button>
-                </div>
-
-                <div id="ingredient-editor" class="ingredient-editor"></div>
-
-                <div class="studio-actions">
-                  <button class="primary-button" id="save-recipe" type="submit">
-                    Save Recipe
-                  </button>
-                  <button class="ghost-button" id="duplicate-recipe" type="button">
-                    Duplicate
-                  </button>
-                </div>
-                <p id="recipe-form-message" class="form-message" aria-live="polite"></p>
-              </form>
-            </section>
-          </div>
-        </section>
-      </main>
-    </div>
-
-    <script type="module" src="./src/app.js?v=20261102-roundup-warnings"></script>
+    <script type="module" src="./src/app.js?v=20261102-prep-sheet"></script>
   </body>
 </html>

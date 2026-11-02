@@ -192,6 +192,41 @@ function normalizeDesignRecipe(recipe) {
   };
 }
 
+// Older saves stored names like "Iris Nerikiri (あやめ)" or "White nerikiri paste".
+// Split those into the English `name` + Japanese `jp` pair the UI expects.
+function splitLegacyName(item) {
+  const match = String(item?.name ?? "").match(/^(.*?)\s*[(（]([^)）]+)[)）]\s*$/);
+
+  if (!match) {
+    return item;
+  }
+
+  // A saved built-in can carry the old "(あやめ)" name while already inheriting `jp`
+  // from the default, so split the name either way and keep any existing `jp`.
+  return {
+    ...item,
+    name: match[1].replace(/\s+Nerikiri$/i, "").trim(),
+    jp: item.jp || match[2].trim()
+  };
+}
+
+function tidyIngredientName(ingredient) {
+  const name = String(ingredient?.name ?? "")
+    .replace(/\s+nerikiri paste$/i, "")
+    .replace(/^inner filling paste$/i, "Inner filling");
+
+  return splitLegacyName({ ...ingredient, name });
+}
+
+function normalizeNames(recipe) {
+  const split = splitLegacyName(recipe);
+
+  return {
+    ...split,
+    ingredients: (split.ingredients ?? []).map(tidyIngredientName)
+  };
+}
+
 export function buildIngredientId(name, index) {
   return slugify(name) || `ingredient-${index + 1}`;
 }
@@ -199,6 +234,8 @@ export function buildIngredientId(name, index) {
 export function validateRecipeInput(recipeInput, existingRecipes = []) {
   const trimmedName = String(recipeInput?.name ?? "").trim();
   const trimmedDescription = String(recipeInput?.description ?? "").trim();
+  const trimmedJp = String(recipeInput?.jp ?? "").trim();
+  const baseDoughRecipeId = String(recipeInput?.baseDoughRecipeId ?? "").trim();
   const yieldGrams = toFiniteNumber(recipeInput?.yieldGrams, 0);
   const hydrationTargetIngredientId = String(
     recipeInput?.hydrationTargetIngredientId ?? ""
@@ -209,11 +246,19 @@ export function validateRecipeInput(recipeInput, existingRecipes = []) {
       const name = String(ingredient?.name ?? "").trim();
       const baseGrams = toFiniteNumber(ingredient?.baseGrams, 0);
 
+      const jp = String(ingredient?.jp ?? "").trim();
+      const extra = {};
+      for (const key of ["type", "colorLabel", "swatch"]) {
+        if (ingredient?.[key]) extra[key] = ingredient[key];
+      }
+
       return {
         id: buildIngredientId(name, index),
         name,
+        ...(jp ? { jp } : {}),
         baseGrams,
-        role: ingredient?.role
+        role: ingredient?.role,
+        ...extra
       };
     })
     .filter((ingredient) => ingredient.name.length > 0);
@@ -266,7 +311,9 @@ export function validateRecipeInput(recipeInput, existingRecipes = []) {
     value: {
       id: recipeId,
       name: trimmedName,
-      description: trimmedDescription || "Custom recipe created in Recipe Studio.",
+      ...(trimmedJp ? { jp: trimmedJp } : {}),
+      ...(baseDoughRecipeId ? { baseDoughRecipeId } : {}),
+      description: trimmedDescription,
       yieldGrams,
       hydrationTargetIngredientId,
       ingredients: ingredients.map((ingredient) => ({
@@ -280,7 +327,7 @@ export function validateRecipeInput(recipeInput, existingRecipes = []) {
 }
 
 export function loadRecipes() {
-  return loadCollection(STORAGE_KEY, DEFAULT_RECIPES).map(normalizeDesignRecipe);
+  return loadCollection(STORAGE_KEY, DEFAULT_RECIPES).map(normalizeNames).map(normalizeDesignRecipe);
 }
 
 export function saveRecipes(recipes) {
@@ -292,11 +339,22 @@ export function upsertRecipe(recipes, recipe) {
 }
 
 export function loadBaseDoughRecipes() {
-  return loadCollection(BASE_DOUGH_STORAGE_KEY, BASE_DOUGH_RECIPES);
+  return loadCollection(BASE_DOUGH_STORAGE_KEY, BASE_DOUGH_RECIPES).map(normalizeNames);
 }
 
 export function saveBaseDoughRecipes(recipes) {
   saveCollection(BASE_DOUGH_STORAGE_KEY, recipes);
+}
+
+export function deleteRecipe(recipes, recipeId) {
+  return cloneRecipes(recipes).filter((recipe) => recipe.id !== recipeId);
+}
+
+export function isBuiltInRecipe(recipeId) {
+  return (
+    DEFAULT_RECIPES.some((recipe) => recipe.id === recipeId) ||
+    BASE_DOUGH_RECIPES.some((recipe) => recipe.id === recipeId)
+  );
 }
 
 export function upsertBaseDoughRecipe(recipes, recipe) {

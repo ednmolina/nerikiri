@@ -221,6 +221,9 @@ test("rounded color-split weigh-outs never come in under the exact amounts", () 
           settings: { roundToIncrement }
         });
         const split = calculateColorSplit({ plan, baseDoughRecipe });
+        for (const portion of [...split.colorPortions, ...split.fillingPortions]) {
+          assert.ok(portion.totalRoundedGrams >= portion.totalGrams - 1e-9, `${recipe.id} x${pieceCount} ${portion.id} portion rounded below exact`);
+        }
         for (const portion of split.colorPortions) {
           for (const ingredient of portion.baseDoughIngredients) {
             assert.ok(

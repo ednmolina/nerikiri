@@ -378,7 +378,10 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
         name: ingredient.name,
         colorLabel: ingredient.colorLabel ?? null,
         totalGrams: ingredient.toAddGrams,
-        totalRoundedGrams: ingredient.toAddRoundedGrams,
+        totalRoundedGrams:
+          roundingIncrement !== undefined
+            ? roundUpToIncrement(ingredient.toAddGrams, roundingIncrement)
+            : ingredient.toAddGrams,
         portionLiquidContribution,
         baseDoughIngredients: scaleBaseForPortion(ingredient.toAddGrams, portionLiquidContribution)
       };
@@ -387,7 +390,10 @@ export function calculateColorSplit({ plan, baseDoughRecipe }) {
       id: ingredient.id,
       name: ingredient.name,
       totalGrams: ingredient.toAddGrams,
-      totalRoundedGrams: ingredient.toAddRoundedGrams
+      totalRoundedGrams:
+        roundingIncrement !== undefined
+          ? roundUpToIncrement(ingredient.toAddGrams, roundingIncrement)
+          : ingredient.toAddGrams
     })),
     totalColoredDough,
     totalLiquidColoringAmount: liquidColoringTotal,
