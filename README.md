@@ -11,12 +11,13 @@ A **totals check** at the end shows the arithmetic, and warns when a base dough'
 
 ## First visit: four quick questions
 
-New visitors aren't dropped straight into the full breakdown. A short guided setup asks one thing per screen:
+New visitors aren't dropped straight into the full breakdown. A short guided setup asks one thing per screen, and none of the recipe steps are shown until it's finished:
 
 1. What are you making?
 2. How many pieces?
 3. How much extra dough for handling? (0%, 5%, 10% recommended, 15%)
-4. Powder or liquid coloring?
+4. How precise is your scale? (exact 0.1 g, 0.5 g or 1 g, always rounded up)
+5. Powder or liquid coloring?
 
 **Show my recipe** then opens the full prep sheet, with a one-line summary of the answers and a **Change** button to go through them again. Returning visits go straight to the prep sheet.
 
@@ -24,7 +25,8 @@ New visitors aren't dropped straight into the full breakdown. A short guided set
 
 | Screen | Layout |
 | --- | --- |
-| iPad, Mac, laptop (≥ 760 px) | Top bar with **Calculator** and **Recipe Studio**. Setup on the left (design cards, pieces stepper, extra-dough chips, More options), prep sheet on the right. |
+| Mac, laptop (≥ 1100 px) | Top bar with **Calculator** and **Recipe Studio**. **Designs** sidebar on the left, the prep sheet in the middle, and a **Batch** panel on the right with pieces, extra dough, base dough, rounding and coloring. |
+| iPad, small windows (760–1099 px) | Designs in a row above the prep sheet, Batch panel on the right. |
 | iPhone (< 760 px) | Large title you tap to switch designs, the prep sheet scrolling underneath, a floating **Pieces** bar above a **Plan / Recipes** tab bar, and a **Batch Options** sheet for base dough, rounding and coloring. |
 
 Colors follow Apple's grouped system palette and switch automatically with the device's light or dark appearance. On iPhone, "Add to Home Screen" opens it full screen.
