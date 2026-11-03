@@ -2,10 +2,13 @@ import {
   calculateColorSplit,
   calculateRecipePlan,
   checkRecipeConsistency
-} from "./calculator.js?v=20261102-mac";
+} from "./calculator.js?v=20261103-theme";
 import {
+  buildBackup,
   buildIngredientId,
   deleteRecipe,
+  mergeImported,
+  parseBackup,
   isBuiltInRecipe,
   loadBaseDoughRecipes,
   loadRecipes,
@@ -14,7 +17,7 @@ import {
   upsertBaseDoughRecipe,
   upsertRecipe,
   validateRecipeInput
-} from "./recipe-store.js?v=20261102-mac";
+} from "./recipe-store.js?v=20261103-theme";
 import { COLOR_SWATCHES, STEP_LABELS } from "./data.js";
 
 // ---------------------------------------------------------------------------
@@ -1123,9 +1126,41 @@ document.addEventListener("keydown", (event) => {
   else if (event.key === "Escape") closeSidebarOverlay();
 });
 
+// Appearance: follows the device until you tap the light/dark button, then remembers your pick.
+const THEME_KEY = "nerikiri-theme";
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+function effectiveTheme() {
+  return document.documentElement.dataset.theme || (systemDark.matches ? "dark" : "light");
+}
+function syncTheme() {
+  const dark = effectiveTheme() === "dark";
+  document.documentElement.dataset.effective = dark ? "dark" : "light";
+  const label = dark ? "Switch to light mode" : "Switch to dark mode";
+  $$("[data-theme-toggle]").forEach((el) => {
+    el.setAttribute("aria-label", label);
+    el.title = label;
+  });
+  $$('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", dark ? "#000000" : "#F2F2F7"));
+}
+function toggleTheme() {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    // Storage blocked: the choice lasts for this visit.
+  }
+  syncTheme();
+}
+systemDark.addEventListener("change", syncTheme);
+
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button, [data-go]");
   if (!target) return;
+  if (target.hasAttribute("data-theme-toggle")) {
+    toggleTheme();
+    return;
+  }
 
   if (target.dataset.go) {
     closeSidebarOverlay();
@@ -1206,6 +1241,12 @@ document.addEventListener("click", (event) => {
       plan.coloring = "powder";
       plan.baseId = getRecipe(plan.recipeId)?.baseDoughRecipeId ?? "";
       refreshPlan();
+      break;
+    case "export-backup":
+      exportBackup();
+      break;
+    case "import-backup":
+      $("#import-file").click();
       break;
     case "new-recipe":
       selectInStudio(studio.lib, null);
@@ -1294,6 +1335,56 @@ function handleDraftInput(el) {
   renderEditorMeta();
 }
 
+// ---------------------------------------------------------------------------
+// Backup: export to a file, import from a file
+// ---------------------------------------------------------------------------
+
+function setBackupStatus(text, warn = false) {
+  const el = $("#backup-status");
+  el.textContent = text;
+  el.classList.toggle("note-warn", warn);
+}
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(buildBackup(recipes, baseDoughs), null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `nerikiri-recipes-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  setBackupStatus(`Saved ${recipes.length} designs and ${baseDoughs.length} base doughs to a file.`);
+}
+
+async function importBackupFile(file) {
+  try {
+    const incoming = parseBackup(await file.text());
+    const designs = mergeImported(recipes, incoming.recipes);
+    const bases = mergeImported(baseDoughs, incoming.baseDoughs);
+    saveBaseDoughRecipes(bases.merged);
+    saveRecipes(designs.merged);
+    recipes = loadRecipes();
+    baseDoughs = loadBaseDoughRecipes();
+    renderRecipeCards();
+    renderOptions();
+    const list = studioList();
+    selectInStudio(studio.lib, list.some((item) => item.id === studio.selectedId) ? studio.selectedId : list[0]?.id);
+    refreshPlan();
+    const added = designs.added + bases.added;
+    const updated = designs.updated + bases.updated;
+    setBackupStatus(`Imported: ${added} new, ${updated} updated.`);
+  } catch (error) {
+    setBackupStatus(`Couldn't import that file. ${error.message || ""}`.trim(), true);
+  }
+}
+
+$("#import-file").addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (file) importBackupFile(file);
+  event.target.value = "";
+});
+
 $("#recipe-form").addEventListener("submit", (event) => {
   event.preventDefault();
   saveDraft();
@@ -1314,3 +1405,4 @@ selectInStudio("design", recipes[0]?.id);
 renderWizard();
 refreshPlan();
 syncPaneToggles();
+syncTheme();

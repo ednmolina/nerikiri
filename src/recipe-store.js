@@ -360,3 +360,58 @@ export function isBuiltInRecipe(recipeId) {
 export function upsertBaseDoughRecipe(recipes, recipe) {
   return upsertCollection(recipes, recipe);
 }
+
+// ---------------------------------------------------------------------------
+// Backups: move recipes between browsers or devices (for example, from a local copy to the website).
+// ---------------------------------------------------------------------------
+
+export function buildBackup(recipes, baseDoughs) {
+  return {
+    app: "nerikiri",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    recipes: cloneRecipes(recipes),
+    baseDoughs: cloneRecipes(baseDoughs)
+  };
+}
+
+function looksLikeRecipe(item) {
+  return item && typeof item === "object" && typeof item.id === "string" && item.id && Array.isArray(item.ingredients);
+}
+
+function looksLikeBaseDough(item) {
+  return looksLikeRecipe(item) && !item.baseDoughRecipeId && ("hydrationTargetIngredientId" in item || item.ingredients.some((ing) => ing?.role === "hydration-target"));
+}
+
+// Accepts a backup file, or either raw localStorage value pasted as JSON (an array of designs or of base doughs).
+export function parseBackup(data) {
+  if (typeof data === "string") data = JSON.parse(data);
+  let designs = [];
+  let bases = [];
+  if (Array.isArray(data)) {
+    data.filter(looksLikeRecipe).forEach((item) => (looksLikeBaseDough(item) ? bases : designs).push(item));
+  } else if (data && typeof data === "object") {
+    designs = (Array.isArray(data.recipes) ? data.recipes : []).filter(looksLikeRecipe);
+    bases = (Array.isArray(data.baseDoughs) ? data.baseDoughs : []).filter(looksLikeRecipe);
+  }
+  if (!designs.length && !bases.length) throw new Error("No recipes found in that file.");
+  return { recipes: cloneRecipes(designs), baseDoughs: cloneRecipes(bases) };
+}
+
+// Imported recipes replace ones with the same id and are added otherwise.
+export function mergeImported(current, incoming) {
+  const merged = cloneRecipes(current);
+  let added = 0;
+  let updated = 0;
+  incoming.forEach((recipe) => {
+    const index = merged.findIndex((item) => item.id === recipe.id);
+    if (index >= 0) {
+      merged[index] = { ...recipe, ingredients: recipe.ingredients.map((ing) => ({ ...ing })) };
+      updated += 1;
+    } else {
+      merged.push({ ...recipe, ingredients: recipe.ingredients.map((ing) => ({ ...ing })) });
+      added += 1;
+    }
+  });
+  return { merged, added, updated };
+}
