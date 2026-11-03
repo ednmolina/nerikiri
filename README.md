@@ -9,9 +9,9 @@ A static, browser-based planner for nerikiri. Pick a design, say how many pieces
 
 A **totals check** at the end shows the arithmetic, and warns when a base dough's yield can't be right (for example, a yield that assumes no water cooks off).
 
-## First visit: four quick questions
+## Every visit: five quick questions
 
-New visitors aren't dropped straight into the full breakdown. A short guided setup asks one thing per screen, and none of the recipe steps are shown until it's finished:
+Each time the page opens or reloads, it starts with the questions instead of the full breakdown. A short guided setup asks one thing per screen, and none of the recipe steps are shown until it's finished:
 
 1. What are you making?
 2. How many pieces?
@@ -19,7 +19,7 @@ New visitors aren't dropped straight into the full breakdown. A short guided set
 4. How precise is your scale? (exact 0.1 g, 0.5 g or 1 g, always rounded up)
 5. Powder or liquid coloring?
 
-**Show my recipe** then opens the full prep sheet, with a one-line summary of the answers and a **Change** button to go through them again. Returning visits go straight to the prep sheet.
+**Show my recipe** then opens the full prep sheet, with a one-line summary of the answers and a **Change** button to go through them again. Your previous answers are already selected, so you can tap Next through them when nothing has changed.
 
 ## One web app, dressed for each Apple platform
 
