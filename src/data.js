@@ -20,8 +20,8 @@ export const BASE_DOUGH_RECIPES = [
     id: "soft-petal-nerikiri-base",
     name: "Soft Petal Nerikiri Base",
     jp: "やわらかめ生地",
-    description: "A slightly softer batch for thin petals and gentle blending.",
-    yieldGrams: 352,
+    description: "A slightly softer batch for thin petals and gentle blending. Yield assumes the added water boils off during cooking.",
+    yieldGrams: 326,
     hydrationTargetIngredientId: "water",
     ingredients: [
       { id: "white-bean-paste", name: "White bean paste", jp: "白こしあん", baseGrams: 300 },
@@ -34,8 +34,8 @@ export const BASE_DOUGH_RECIPES = [
     id: "firm-detail-nerikiri-base",
     name: "Firm Detail Nerikiri Base",
     jp: "かため生地",
-    description: "A firmer dough for crisper cuts, edges, and hand-formed detail.",
-    yieldGrams: 344,
+    description: "A firmer dough for crisper cuts, edges, and hand-formed detail. Yield assumes the added water boils off during cooking.",
+    yieldGrams: 332,
     hydrationTargetIngredientId: "water",
     ingredients: [
       { id: "white-bean-paste", name: "White bean paste", jp: "白こしあん", baseGrams: 300 },
