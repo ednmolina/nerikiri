@@ -43,8 +43,9 @@ const plan = {
   ...loadPlanPrefs()
 };
 
-// First visit (or an older save from before the guided setup): start with the questions.
-if (!plan.setupDone) plan.view = "wizard";
+// Every visit starts with the questions. Your last answers are already picked, so Next, Next works.
+plan.setupDone = false;
+plan.view = "wizard";
 
 const studio = {
   lib: "design",
@@ -60,7 +61,7 @@ function loadPlanPrefs() {
     const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
     if (!raw) return {};
     const saved = JSON.parse(raw);
-    const allowed = ["view", "recipeId", "baseId", "pieces", "loss", "round", "coloring", "liquid", "setupDone"];
+    const allowed = ["recipeId", "baseId", "pieces", "loss", "round", "coloring", "liquid"];
     return Object.fromEntries(Object.entries(saved).filter(([key]) => allowed.includes(key)));
   } catch {
     return {};
@@ -69,10 +70,10 @@ function loadPlanPrefs() {
 
 function savePlanPrefs() {
   try {
-    const { view, recipeId, baseId, pieces, loss, round, coloring, liquid, setupDone } = plan;
+    const { recipeId, baseId, pieces, loss, round, coloring, liquid } = plan;
     window.localStorage.setItem(
       PLAN_STORAGE_KEY,
-      JSON.stringify({ view, recipeId, baseId, pieces, loss, round, coloring, liquid, setupDone })
+      JSON.stringify({ recipeId, baseId, pieces, loss, round, coloring, liquid })
     );
   } catch {
     // Private mode or storage blocked: the app still works for this visit.
