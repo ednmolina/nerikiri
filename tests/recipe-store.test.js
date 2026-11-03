@@ -345,3 +345,25 @@ test("deleteRecipe removes custom recipes; built-ins are recognised", () => {
   assert.equal(isBuiltInRecipe("base-nerikiri-paste"), true);
   assert.equal(isBuiltInRecipe("plum"), false);
 });
+
+test("backup import accepts a backup file or raw saved arrays and merges by id", async () => {
+  const { buildBackup, parseBackup, mergeImported } = await import("../src/recipe-store.js");
+  const design = { id: "kiku", name: "Chrysanthemum", jp: "菊", yieldGrams: 30, baseDoughRecipeId: "base-nerikiri-paste", ingredients: [{ id: "w", name: "White", baseGrams: 30 }] };
+  const base = { id: "my-base", name: "My base", yieldGrams: 300, hydrationTargetIngredientId: "water", ingredients: [{ id: "water", name: "Water", baseGrams: 20, role: "hydration-target" }] };
+
+  const fromFile = parseBackup(JSON.stringify(buildBackup([design], [base])));
+  assert.equal(fromFile.recipes[0].id, "kiku");
+  assert.equal(fromFile.baseDoughs[0].id, "my-base");
+
+  const fromRaw = parseBackup(JSON.stringify([design, base]));
+  assert.deepEqual(fromRaw.recipes.map((r) => r.id), ["kiku"]);
+  assert.deepEqual(fromRaw.baseDoughs.map((r) => r.id), ["my-base"]);
+
+  const { merged, added, updated } = mergeImported([{ ...design, name: "Old" }], [design, { ...design, id: "ume" }]);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].name, "Chrysanthemum");
+  assert.equal(added, 1);
+  assert.equal(updated, 1);
+
+  assert.throws(() => parseBackup("{}"), /No recipes/);
+});

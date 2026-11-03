@@ -6,6 +6,11 @@
     <title>Nerikiri 練り切り</title>
     <meta name="description" content="Plan nerikiri batches: base dough, color portions, filling and shaping, with totals that add up." />
     <meta name="color-scheme" content="light dark" />
+    <script>
+      // Apply the saved appearance before the page paints.
+      try { var t = localStorage.getItem("nerikiri-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+      document.documentElement.dataset.effective = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    </script>
     <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -14,7 +19,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&display=swap" />
-    <link rel="stylesheet" href="./styles.css?v=20261103-ask" />
+    <link rel="stylesheet" href="./styles.css?v=20261103-theme" />
   </head>
   <body data-view="plan">
     <header class="topbar">
@@ -30,6 +35,10 @@
           <button type="button" class="tab" data-go="studio">Recipe Studio</button>
         </nav>
         <div class="tb-side end">
+          <button type="button" class="tb-btn theme-btn" data-theme-toggle aria-label="Switch to dark mode" title="Switch to dark mode">
+            <svg class="icon-sun" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"></path></svg>
+            <svg class="icon-moon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+          </button>
           <button type="button" class="tb-btn" id="toggle-inspector" aria-label="Show or hide batch settings" aria-pressed="true" title="Show or Hide Batch Settings (⌥⌘I)">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="3"></rect><path d="M14.5 4.5v15"></path></svg>
           </button>
@@ -44,6 +53,10 @@
           <div class="wiz-progress">
             <span id="wiz-count" class="hint"></span>
             <span class="wiz-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+            <button type="button" class="glass-circle theme-btn phone-only" data-theme-toggle aria-label="Switch to dark mode" title="Switch to dark mode">
+              <svg class="icon-sun" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"></path></svg>
+              <svg class="icon-moon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+            </button>
           </div>
           <h1 id="wiz-title" class="wiz-title" tabindex="-1"></h1>
           <p id="wiz-help" class="wiz-help"></p>
@@ -76,9 +89,15 @@
                   <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
                   <select class="overlay-select" data-bind="recipeId" aria-label="Recipe"></select>
                 </label>
+                <span class="phone-actions">
+                <button type="button" class="glass-circle theme-btn" data-theme-toggle aria-label="Switch to dark mode" title="Switch to dark mode">
+            <svg class="icon-sun" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"></path></svg>
+            <svg class="icon-moon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+                </button>
                 <button type="button" class="glass-circle" id="open-options" aria-label="Batch options">
                   <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle><path d="M4 17h4"></path><path d="M12 17h8"></path><circle cx="10" cy="17" r="2"></circle></svg>
                 </button>
+                </span>
               </div>
               <p class="hint num" data-out="piecesLine"></p>
             </div>
@@ -145,7 +164,13 @@
       <section class="view" id="view-studio" aria-label="Recipe Studio" hidden>
         <div class="layout">
           <aside class="card library" aria-labelledby="library-title">
-            <h1 id="library-title" class="display">Recipes</h1>
+            <div class="library-head">
+              <h1 id="library-title" class="display">Recipes</h1>
+              <button type="button" class="glass-circle theme-btn phone-only" data-theme-toggle aria-label="Switch to dark mode" title="Switch to dark mode">
+              <svg class="icon-sun" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"></path></svg>
+              <svg class="icon-moon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+            </button>
+            </div>
             <div class="chips two" role="group" aria-label="Recipe type">
               <button type="button" class="chip-btn" data-lib="design">Designs</button>
               <button type="button" class="chip-btn" data-lib="base">Base doughs</button>
@@ -159,6 +184,14 @@
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M10 18h4"></path></svg>
               Recipes save on this device, in this browser.
             </p>
+            <div class="backup">
+              <div class="backup-row">
+                <button type="button" class="secondary-btn" id="export-backup">Export backup</button>
+                <button type="button" class="secondary-btn" id="import-backup">Import backup</button>
+                <input type="file" id="import-file" accept="application/json,.json,.txt" hidden />
+              </div>
+              <p class="hint" id="backup-status" aria-live="polite">Move your recipes to another browser or device.</p>
+            </div>
           </aside>
 
           <form class="editor" id="recipe-form" novalidate></form>
@@ -187,6 +220,6 @@
       <div id="options-phone" class="options"></div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=20261103-ask"></script>
+    <script type="module" src="./src/app.js?v=20261103-theme"></script>
   </body>
 </html>

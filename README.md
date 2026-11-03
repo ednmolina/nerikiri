@@ -29,7 +29,7 @@ Each time the page opens or reloads, it starts with the questions instead of the
 | iPad (touch) | The same split view at touch size: 44 pt controls, round toolbar buttons and capsule segments. |
 | iPhone (< 760 px) | A large title you tap to switch designs, an inset grouped prep sheet, a floating **Pieces** bar above a **Plan / Recipes** tab bar, and a **Batch Options** sheet. |
 
-Below 1100 px wide (an iPad in portrait or a narrow Mac window), the sidebar tucks away and slides over the sheet when you tap the sidebar button, like a split view. Colors follow Apple's grouped system palette and switch automatically with light and dark appearance. On iPhone, "Add to Home Screen" opens it full screen.
+Below 1100 px wide (an iPad in portrait or a narrow Mac window), the sidebar tucks away and slides over the sheet when you tap the sidebar button, like a split view. Colors follow Apple's grouped system palette. The app follows the device's light or dark appearance until you tap the **sun / moon** button (in the toolbar, or top right on iPhone), then it remembers your choice. On iPhone, "Add to Home Screen" opens it full screen.
 
 ## Names are always English + Japanese
 
@@ -41,6 +41,7 @@ Every recipe, base dough, ingredient, color, filling and step shows its English 
 - **Base doughs**: raw ingredients plus the **cooked yield you weighed**. The calculator uses that yield to work out how much raw dough to make, so measure it once per recipe.
 - Built-in recipes can be edited but not deleted. Custom ones can be duplicated and deleted.
 - Recipes and your last calculator settings are saved in this browser's `localStorage` on this device. They don't sync between devices, and clearing the site's data removes them.
+- **Export backup** saves every design and base dough to a `.json` file. **Import backup** on another browser or device adds them, replacing any recipe with the same id. Import also accepts the raw saved value from an older copy of the app.
 
 Older saves (for example `Iris Nerikiri (あやめ)` or `White nerikiri paste`) are tidied into the new name pairs when loaded.
 
