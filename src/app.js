@@ -2,7 +2,7 @@ import {
   calculateColorSplit,
   calculateRecipePlan,
   checkRecipeConsistency
-} from "./calculator.js?v=20261103-theme";
+} from "./calculator.js?v=20261103-yields";
 import {
   buildBackup,
   buildIngredientId,
@@ -17,8 +17,8 @@ import {
   upsertBaseDoughRecipe,
   upsertRecipe,
   validateRecipeInput
-} from "./recipe-store.js?v=20261103-theme";
-import { COLOR_SWATCHES, STEP_LABELS } from "./data.js";
+} from "./recipe-store.js?v=20261103-yields";
+import { COLOR_SWATCHES, STEP_LABELS } from "./data.js?v=20261103-yields";
 
 // ---------------------------------------------------------------------------
 // State

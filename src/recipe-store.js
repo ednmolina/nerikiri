@@ -1,4 +1,4 @@
-import { BASE_DOUGH_RECIPES, DEFAULT_RECIPES } from "./data.js";
+import { BASE_DOUGH_RECIPES, DEFAULT_RECIPES } from "./data.js?v=20261103-yields";
 
 const STORAGE_KEY = "nerikiri-recipes-v3";
 const BASE_DOUGH_STORAGE_KEY = "nerikiri-base-doughs-v1";
